@@ -1,0 +1,24 @@
+Found 1 PDB files in 'input'. Starting processing...
+
+Processing 1a27_pp.pdb...
+  No missing residues detected.
+  Missing atoms detected for 6 residues:
+    Residue TYR 33 (Chain A): Missing atoms CB, CG, CD1, CE1, CZ, OH, CE2, CD2
+    Residue TYR 155 (Chain A): Missing atoms CB, CG, CD1, CE1, CZ, OH, CE2, CD2
+    Residue TYR 216 (Chain A): Missing atoms CB, CG, CD1, CE1, CZ, OH, CE2, CD2
+    Residue TYR 218 (Chain A): Missing atoms CB, CG, CD1, CE1, CZ, OH, CE2, CD2
+    Residue TYR 253 (Chain A): Missing atoms CB, CG, CD1, CE1, CZ, OH, CE2, CD2
+    Residue TYR 275 (Chain A): Missing atoms CB, CG, CD1, CE1, CZ, OH, CE2, CD2
+  Missing heavy atoms added and saved to output/1a27_pp_A.pdb
+  SCWRL4 optimization completed and saved to output/1a27_pp_B.pdb
+  Merged PDB saved to output/1a27_pp_C.pdb
+
+Processing Complete.
+  Total files processed: 1
+  Successfully processed: 1
+  Failed to process: 0
+  Average number of missing atoms per file: 48.00
+  Standard deviation of missing atoms per file: 0.00
+
+Detailed logs are available in 'output/fix_pdbs.log'.
+Statistics have been written to 'output/stats.dat'.
