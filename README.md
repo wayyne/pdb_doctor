@@ -85,10 +85,10 @@ If the command is not found, add the SCWRL4 directory to your PATH.
 
 ### Command-Line Arguments
 
-| Argument | Description | Required |
-|------------|--------------------------------------------------|----------|
-| `--input` | Path to the directory containing input PDB files | ✅ |
-| `--output` | Path to the directory for output PDB files | ✅ |
+| Argument | Description |
+|------------|--------------------------------------------------|
+| `--input` | Path to the directory containing input PDB files | 
+| `--output` | Path to the directory for output PDB files |
 
 The script processes all `.pdb` files in the input directory.
 
@@ -197,12 +197,11 @@ This project is distributed under the MIT License.
 
 ## Acknowledgments
 
-- 
 PDBFixer
-PDBFixer(https://github.com/openmm/pdbfixer) – Used for fixing PDB files.
-- 
+- PDBFixer(https://github.com/openmm/pdbfixer) – Used for fixing PDB files.
+  
 OpenMM
-OpenMM(https://github.com/openmm/openmm) – Molecular simulation toolkit.
-- 
+- OpenMM(https://github.com/openmm/openmm) – Molecular simulation toolkit.
+  
 SCWRL4
-SCWRL4(http://dunbrack.fccc.edu/scwrl4/) – Side-chain optimization tool.
+- SCWRL4(http://dunbrack.fccc.edu/scwrl4/) – Side-chain optimization tool.
