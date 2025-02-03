@@ -29,7 +29,9 @@ setup_conda_env() {
     echo "Installing requirements from $requirements_file"
     pip install --upgrade pip
     pip install -r "$requirements_file"
-    
+
+    conda install -c conda-forge pdbfixer
+
     echo "Deactivating Conda environment: $env_name"
     conda deactivate
 }
@@ -52,7 +54,10 @@ setup_venv_env() {
     echo "Installing requirements from $requirements_file"
     pip install --upgrade pip
     pip install -r "$requirements_file"
-    
+   
+    git clone https://github.com/openmm/pdbfixer.git
+    cd pdbfixer && python setup.py install && cd -
+
     echo "Deactivating Python venv environment: $env_name"
     deactivate
 }
