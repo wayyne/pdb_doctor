@@ -36,7 +36,7 @@ This tool is designed for **structural bioinformatics** applications, enabling r
 
 - **SCWRL4** – A required executable for side-chain optimization.
   - Ensure `Scwrl4` is installed and available in your system's `PATH`.
-  - Download SCWRL4 from [here](http://dunbrack.fccc.edu/scwrl4/).
+  - Download SCWRL4 from [here](http://dunbrack.fccc.edu/lab/).
 
 ---
 
