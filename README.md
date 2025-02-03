@@ -5,7 +5,7 @@
 This repository contains a Python-based pipeline for restoring and refining protein structures in **PDB format**. The pipeline follows a three-step process:
 
 1. **Add missing heavy atoms** using [PDBFixer](https://github.com/openmm/pdbfixer).
-2. **Optimize side-chain conformations** using [SCWRL4](http://dunbrack.fccc.edu/scwrl4/).
+2. **Optimize side-chain conformations** using [SCWRL4](http://dunbrack.fccc.edu/lab/).
 3. **Merge atomic coordinates** from the original, fixed, and optimized structures while preserving **beta-factor information**.
 
 This tool is designed for **structural bioinformatics** applications, enabling researchers to reconstruct high-quality protein models from incomplete structures.
