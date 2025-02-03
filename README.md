@@ -113,12 +113,12 @@ Processing details and errors are logged in `fix_pdbs.log` within the output dir
 
 - Statistics:
 The script computes:
-- Total files processed
-- Successful/failed processing counts
-- Average missing atoms per file
-- Standard deviation of missing atoms
+  - Total files processed
+  - Successful/failed processing counts
+  - Average missing atoms per file
+  - Standard deviation of missing atoms
 
-These statistics are printed to the console and saved to `stats.dat`.
+  These statistics are printed to the console and saved to `stats.dat`.
 
 ## Example Workflow
 
