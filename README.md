@@ -38,12 +38,14 @@ Use the **setup script** to configure either **Conda** or **venv**:
 
 #### **Option A: Conda Setup**
 ```bash
-bash env/setup_env.sh conda
+cd env
+bash setup_env.sh conda
 ```
 
 #### **Option B: Python venv Setup**
 ```bash
-bash env/setup_env.sh venv
+cd env
+bash setup_env.sh venv
 ```
 
 This will:
@@ -57,16 +59,17 @@ SCWRL4 is required for **side-chain optimization**. Make sure it is in your `PAT
 which Scwrl4
 ```
 If not installed, download it from:
-[http://dunbrack.fccc.edu/scwrl4/](http://dunbrack.fccc.edu/scwrl4/)
+[http://dunbrack.fccc.edu/scwrl4/](http://dunbrack.fccc.edu/lab/scwrl/)
 
 ---
 
 ## Usage
 
-### **1. Run the Full Workflow**
+### **1. Run the Full Workflow (assuming python venv)**
 The **`triage.sh`** script automates the complete process:
 
 ```bash
+source <pdb_doctor_root>/env/pdb_doctor/bin/activate
 bash triage.sh
 ```
 
@@ -102,7 +105,6 @@ python complete_pdb.py --mode partial --input input --output output
 ```
 **Modes:**
 - `--mode partial` → Restores missing **heavy atoms**.
-- `--mode complete` → Reconstructs **fully missing residues**.
 
 ---
 
@@ -144,8 +146,7 @@ If you use PDB Doctor in your research, please cite:
 ---
 
 ## Author
-**Wayyne**, 2024  
-Expert in **Unix, Computational Biology, and Structural Bioinformatics**.
+Guy **Wayyne** Dayhoff II, 2024  
 
 ---
 
