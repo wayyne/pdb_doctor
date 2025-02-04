@@ -146,7 +146,8 @@ If you use PDB Doctor in your research, please cite:
 ---
 
 ## Author
-Guy **Wayyne** Dayhoff II, 2024  
+Guy **Wayyne** Dayhoff II
+-Written Feb 2025
 
 ---
 
