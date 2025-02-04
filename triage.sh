@@ -13,4 +13,4 @@ NR > 1 {
 mkdir input
 mv *_D.pdb input/.
 
-time python ${basecamp}/pdb_doctor.py --mode partial --input input --output output
+time python ${basecamp}/complete_pdb.py --mode partial --input input --output output
