@@ -1,207 +1,155 @@
-# Restore Protein Structure Pipeline
+# PDB Doctor
 
 ## Overview
 
-This repository contains a Python-based pipeline for restoring and refining protein structures in **PDB format**. The pipeline follows a three-step process:
+**PDB Doctor** is a powerful, **Unix-driven** pipeline designed for **protein structure refinement** and **completion**. It automates the extraction, folding, and restoration of protein structures from **metadata-scrubbed PDB files**, utilizing **PDBFixer, SCWRL4, and ESM3** for **atom reconstruction, backbone restoration, and sequence-based folding**.
 
-1. **Add missing heavy atoms** using [PDBFixer](https://github.com/openmm/pdbfixer).
-2. **Optimize side-chain conformations** using [SCWRL4](http://dunbrack.fccc.edu/lab/).
-3. **Merge atomic coordinates** from the original, fixed, and optimized structures while preserving **beta-factor information**.
-
-This tool is designed for **structural bioinformatics** applications, enabling researchers to reconstruct high-quality protein models from incomplete structures.
-
----
+This tool is particularly useful for:
+- **Extracting accurate amino acid sequences** from incomplete PDB files.
+- **Folding sequences using ESM3** and aligning them to experimental data.
+- **Restoring missing residues** while ensuring atomic correctness.
+- **Completing PDB structures** with side-chain optimization via SCWRL4.
+- **Sanity-checking amide bonds** and atom consistency.
 
 ## Features
-
-- **Automated heavy atom reconstruction** for incomplete PDB files.
-- **Parallel processing** for high throughput.
-- **Side-chain optimization** with SCWRL4.
-- **Preservation of atomic beta-factors** during reconstruction.
-- **Detailed logging and statistical reports** for quality assessment.
-
----
-
-## Dependencies
-
-### Required Python Packages
-
-- **Python 3.x**
-- **PDBFixer (v1.10.0)**
-- **OpenMM (v8.2.0)**
-- **NumPy (v2.2.0rc1)**
-- **tqdm (v4.67.1)**
-
-### External Software
-
-- **SCWRL4** – A required executable for side-chain optimization.
-  - Ensure `Scwrl4` is installed and available in your system's `PATH`.
-  - Download SCWRL4 from [here](http://dunbrack.fccc.edu/lab/).
+- **Automated Extraction:** Retrieves protein sequences from metadata-scrubbed PDBs.
+- **Folding & Alignment:** Uses **ESM3** to predict missing regions and align them globally.
+- **Local Stitching:** Inserts missing residues with **backbone preservation**.
+- **Heavy Atom Completion:** Fixes missing **heavy atoms** using **PDBFixer**.
+- **Side-Chain Optimization:** Restores **side-chain conformations** using **SCWRL4**.
+- **Fully Scripted Workflow:** A single **Bash script (`triage.sh`)** automates the pipeline.
 
 ---
 
 ## Installation
 
+PDB Doctor requires a **Python 3.10+ environment**. You can set up dependencies using **either Conda or Python venv** via the provided script.
+
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/restore-protein-structure.git
-cd restore-protein-structure
+git clone https://github.com/your_username/pdb_doctor.git
+cd pdb_doctor
 ```
 
-### 2. Create a Virtual Enviroment (Optional but Recommended)
+### 2. Install Dependencies
 
+Use the **setup script** to configure either **Conda** or **venv**:
+
+#### **Option A: Conda Setup**
 ```bash
-python3 -m venv venv
-source venv/bin/activate  # On macOS/Linux
-venv\Scripts\activate     # On Windows
+bash env/setup_env.sh conda
 ```
 
-### 3. Install Python Dependencies
+#### **Option B: Python venv Setup**
 ```bash
-pip install -r requirements.txt
+bash env/setup_env.sh venv
 ```
-or install dependencies manually:
 
+This will:
+- Create a Python environment (`pdb_doctor`).
+- Install dependencies from `pdb_doctor_env.txt`.
+- Set up **PDBFixer** (from OpenMM) and **SCWRL4** (if available).
+
+### 3. Ensure SCWRL4 is Installed
+SCWRL4 is required for **side-chain optimization**. Make sure it is in your `PATH`:
 ```bash
-  pip install pdbfixer openmm numpy tqdm
+which Scwrl4
 ```
+If not installed, download it from:
+[http://dunbrack.fccc.edu/scwrl4/](http://dunbrack.fccc.edu/scwrl4/)
 
-### 4. Verify SCWRL4 Installation
-
-```bash
-Scwrl4 -h
-```
-
-If the command is not found, add the SCWRL4 directory to your PATH.
+---
 
 ## Usage
 
-### Running the Pipeline
+### **1. Run the Full Workflow**
+The **`triage.sh`** script automates the complete process:
 
 ```bash
-./restore_prot_struct.py --input /path/to/input_pdbs --output /path/to/output_directory
+bash triage.sh
 ```
 
-### Command-Line Arguments
+### **2. Workflow Breakdown**
+Below is a breakdown of how the pipeline functions.
 
-| Argument | Description |
-|------------|--------------------------------------------------|
-| `--input` | Path to the directory containing input PDB files | 
-| `--output` | Path to the directory for output PDB files |
+#### **Step 1: Extract Sequences**
+Extracts **full-length amino acid sequences** from metadata-scrubbed PDBs.
+```bash
+python extract_sequence.py <input_directory>
+```
+**Outputs:**
+- `complete.tsv` – Fully resolved sequences.
+- `incomplete.tsv` – Sequences with **missing residues**.
 
-The script processes all `.pdb` files in the input directory.
+---
 
-## Output Files
+#### **Step 2: Fold and Align Structures**
+Folds missing segments using **ESM3**, aligns the predicted structure, and **stitches missing regions** into the experimental model.
+```bash
+python fold_and_transfer.py <partial_pdb> "<sequence>" <output_pdb>
+```
+**Outputs:**
+- `fitted_folded.pdb` – Folded model, globally aligned.
+- `output_pdb` – Merged **chimeric structure** with restored residues.
 
-For each input PDB file (e.g., `example.pdb`), the pipeline generates:
+---
 
-| Output File | Description |
-|----------------------|-------------|
-| `example_A.pdb` | PDB after adding missing heavy atoms with PDBFixer. |
-| `example_B.pdb` | PDB after side-chain optimization with SCWRL4. |
-| `example_C.pdb` | Final merged PDB combining the original, fixed, and optimized structures. |
+#### **Step 3: Complete Missing Heavy Atoms**
+Uses **PDBFixer** to **restore heavy atoms** and **SCWRL4** to refine side-chain placements.
+```bash
+python complete_pdb.py --mode partial --input input --output output
+```
+**Modes:**
+- `--mode partial` → Restores missing **heavy atoms**.
+- `--mode complete` → Reconstructs **fully missing residues**.
 
-### Additional Files:
-- `fix_pdbs.log` – Logs the processing details.
-- `stats.dat` – Statistical summary of missing atoms per file.
-
-## Logging and Statistics
-
-- Logging:
-Processing details and errors are logged in `fix_pdbs.log` within the output directory.
-
-- Statistics:
-The script computes:
-  - Total files processed
-  - Successful/failed processing counts
-  - Average missing atoms per file
-  - Standard deviation of missing atoms
-
-  These statistics are printed to the console and saved to `stats.dat`.
+---
 
 ## Example Workflow
 
-### Step 1: Prepare Input Files
-Place all `.pdb` files in a designated input directory:
+Given a directory containing **scrubbed PDB files**, PDB Doctor can:
+1. Extract sequences.
+2. Fold missing regions using **ESM3**.
+3. Align folded models with **Kabsch-based superposition**.
+4. Locally **stitch missing segments**.
+5. Restore **side-chains** using **SCWRL4**.
 
-```
-/home/user/input_pdbs/
-├── protein1.pdb
-├── protein2.pdb
-├── protein3.pdb
-```
-
-### Step 2: Run the Script
-
+Example Run:
 ```bash
-./restore_prot_struct.py --input /home/user/input_pdbs --output /home/user/output_pdbs
+bash triage.sh
 ```
 
-### Step 3: Check Output Files
+After execution:
+- `output/` will contain **corrected PDB structures**.
+- `extraction.log` will provide **sequence recovery details**.
 
-```
-/home/user/output_pdbs/
-├── protein1_A.pdb
-├── protein1_B.pdb
-├── protein1_C.pdb
-├── fix_pdbs.log
-├── stats.dat
-```
+---
 
-## Troubleshooting
+## Dependencies
+- **Python 3.10+**
+- **NumPy**
+- **Torch** (for ESM3 folding)
+- **pdbfixer** (for atom reconstruction)
+- **SCWRL4** (for side-chain refinement)
+- **Requests** (for fetching PDBs)
 
-### 1. SCWRL4 Not Found
+---
 
-**Error:**
-```
-Error: SCWRL4 executable 'Scwrl4' not found in PATH.
-```
+## Citation
+If you use PDB Doctor in your research, please cite:
+- **SCWRL4:** Krivov et al., *Proteins: Structure, Function, and Bioinformatics (2009).*
+- **PDBFixer:** OpenMM PDBFixer repository.
 
-**Solution:**
-- Verify SCWRL4 is installed:
+---
 
-```bash
-Scwrl4 -h
-```
+## Author
+**Wayyne**, 2024  
+Expert in **Unix, Computational Biology, and Structural Bioinformatics**.
 
-- If not found, add its location to `PATH`:
-
-```bash
-export PATH="/path/to/Scwrl4:$PATH"
-```
-
-### 2. Missing Dependencies
-
-**Error:**
-```
-ModuleNotFoundError: No module named 'pdbfixer'
-```
-
-**Solution:**
-Ensure dependencies are installed:
-
-```bash
-pip install pdbfixer openmm numpy tqdm
-```
-
-### 3. No Output Files Generated
-
-- Verify `.pdb` files exist in the input directory.
-- Check `fix_pdbs.log` for detailed error messages.
+---
 
 ## License
+MIT License.  
+Feel free to contribute or report issues!
 
-This project is distributed under the MIT License.
-
-
-## Acknowledgments
-
-PDBFixer
-- PDBFixer(https://github.com/openmm/pdbfixer) – Used for fixing PDB files.
-  
-OpenMM
-- OpenMM(https://github.com/openmm/openmm) – Molecular simulation toolkit.
-  
-SCWRL4
-- SCWRL4(http://dunbrack.fccc.edu/scwrl4/) – Side-chain optimization tool.
