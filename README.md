@@ -28,7 +28,7 @@ PDB Doctor requires a **Python 3.10+ environment**. You can set up dependencies 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your_username/pdb_doctor.git
+git clone https://github.com/wayyne/pdb_doctor.git
 cd pdb_doctor
 ```
 
