@@ -457,6 +457,10 @@ def read_pdb_atoms(pdb_file_path):
     return atoms
 
 def write_pdb_atoms(atoms, output_file_path):
+    # --- Minimal change: renumber atoms sequentially ---
+    for i, atom in enumerate(atoms, start=1):
+        atom['serial'] = i
+    # ------------------------------------------------------
     with open(output_file_path, 'w') as f:
         for atom in atoms:
             f.write(format_pdb_line(atom))
