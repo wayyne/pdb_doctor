@@ -72,6 +72,41 @@ def extract_partial_sequence(res_dict, chain):
 
 def find_subsequence_indices(full_seq, subseq):
     """
+    Finds the best alignment indices of subseq in full_seq using dynamic programming.
+    Returns a list of indices corresponding to an optimal left-to-right match.
+    """
+
+    len_full = len(full_seq)
+    len_sub = len(subseq)
+    
+    # DP table to store best alignment scores
+    dp = np.zeros((len_sub + 1, len_full + 1))
+    backtrack = np.full((len_sub + 1, len_full + 1), -1)  # Store backtracking info
+
+    # Fill DP table
+    for i in range(1, len_sub + 1):
+        for j in range(1, len_full + 1):
+            if subseq[i - 1] == full_seq[j - 1]:  # If characters match
+                dp[i][j] = dp[i - 1][j - 1] + 1  # Increase match score
+                backtrack[i][j] = j - 1  # Store index
+
+            else:
+                dp[i][j] = dp[i][j - 1]  # Carry forward best match
+                backtrack[i][j] = backtrack[i][j - 1]
+
+    # Backtrack to get indices
+    indices = []
+    j = len_full  # Start from the last column
+    for i in range(len_sub, 0, -1):
+        j = backtrack[i][j]
+        if j == -1:
+            return None  # No valid subsequence match
+        indices.append(j)
+    
+    return indices[::-1]  # Reverse to get correct order
+
+def oldfind_subsequence_indices(full_seq, subseq):
+    """
     Given the full sequence (full_seq) and a subsequence (subseq), returns a list of indices
     (0-indexed) in full_seq that correspond to a left-to-right greedy match of subseq.
     Assumes that subseq is indeed a subsequence of full_seq.
@@ -91,6 +126,20 @@ def find_subsequence_indices(full_seq, subseq):
 ########################################
 # 1. PDB File I/O Functions
 ########################################
+def update_chain_id(atoms, new_chain_id):
+    """
+    Updates the chain_id of all atoms in the list to new_chain_id.
+    
+    Parameters:
+    - atoms (list of dicts): List of atom dictionaries (from read_pdb).
+    - new_chain_id (str): The new chain ID to set for all atoms.
+
+    Returns:
+    - updated_atoms (list of dicts): The modified list with updated chain IDs.
+    """
+    for atom in atoms:
+        atom["chain_id"] = new_chain_id  # Update the chain ID
+    return atoms  # Return updated list (in-place modification)
 
 def read_pdb(filename):
     """
@@ -724,6 +773,7 @@ def fold_and_transfer(partial_pdb, sequence, output_pdb):
     try:
         partial_atoms = read_pdb(partial_pdb)
         folded_atoms = read_pdb(folded_temp)
+        update_chain_id(folded_atoms,partial_atoms[0]["chain_id"])
     except Exception as e:
         print("Error reading PDB files:", e)
         sys.exit(1)
@@ -750,21 +800,13 @@ def fold_and_transfer(partial_pdb, sequence, output_pdb):
         print("Error: Could not align partial structure sequence with full sequence.")
         sys.exit(1)
     # The first residue in the partial structure (by order) corresponds to full sequence position (indices[0] + 1)
+    print(partial_keys[0][1],end="->")
+    print((indices[0] + 1))
     offset = partial_keys[0][1] - (indices[0] + 1)
     print(f"Computed renumbering offset for chain {chain}: {offset}")
     for atom in folded_atoms:
         atom["res_seq"] += offset
     # ★★★ end renumbering ★★★
-
-  # # ★★★ RENUMBER FOLDED ATOMS ★★★
-  # # The folded structure from ESM3 is numbered 1..N,
-  # # but the deposited (experimental) numbering (from REMARK 465)
-  # # uses –1, 0, 1, 2, 3 for the N–terminus and so on.
-  # # In this case a constant offset of –2 brings the folded numbering in line.
-  # NUMBERING_OFFSET = -2
-  # for atom in folded_atoms:
-  #     atom["res_seq"] += NUMBERING_OFFSET
-  # # ★★★ end renumbering ★★★
 
     # Step 3: Global alignment using CA atoms.
     try:
