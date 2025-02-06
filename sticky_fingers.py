@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import os
+import glob
 import math
+import sys
 
 ##########################################
 # Reused function: read_pdb (provided)
@@ -229,9 +231,16 @@ def get_positive_residues(atoms):
 # Main: Process each output PDB and log details
 ##########################################
 def main():
+    output_dir = sys.argv[1]
+    if len(sys.argv) < 2:
+        print("Usage: sticky_fingers.py <pdb_dir>")
+        sys.exit(1) 
+
+    output_dir = sys.argv[1] 
+    print(f"Output directory: {output_dir}")
+
     basecamp = "/home/wayyne/wrk/pdb_doctor"
-    output_dir = "output"
-    og_pp_pdbs_dir = "/home/wayyne/wrk/biolip2_for_pretraining/pickpocket_2025/pp_pdbs"
+    og_pp_pdbs_dir = "/home/wayyne/wrk/biolip2_for_pretraining/pickpocket_2025/pp_pdbs/single-chain"
 
     # Open log files
     log_filename = "sticky_fingers_log.txt"
@@ -249,8 +258,9 @@ def main():
     for pdb_file in os.listdir(output_dir):
         if pdb_file.endswith("_C.pdb"):
             output_pdb_path = os.path.join(output_dir, pdb_file)
-            base_name = pdb_file[:7]
-            reference_pdb_path = os.path.join(og_pp_pdbs_dir, f"{base_name}.pdb")
+            base_name = pdb_file[:4]
+            reference_pdb_path = glob.glob(os.path.join(og_pp_pdbs_dir, f"{base_name}*.pdb"))[0]
+            #reference_pdb_path = os.path.join(og_pp_pdbs_dir, f"{base_name}*.pdb")
 
             log_file.write("="*50 + "\n")
             log_file.write(f"Processing file: {pdb_file}\n")
@@ -295,7 +305,11 @@ def main():
                 for res_key in lost_positives:
                     ref_min = min_distance_for_residue(ref_atoms, res_key)
                     new_min = min_distance_for_residue(out_atoms, res_key)
-                    log_file.write(f"Residue {res_key}: Ref min distance = {ref_min:.3f} Å, New min distance = {new_min:.3f} Å\n")
+                    if ref_min is not None and new_min is not None:
+                    		log_file.write(f"Residue {res_key}: Ref min distance = {ref_min:.3f} Å, New min distance = {new_min:.3f} Å\n")
+                    else:
+                    		log_file.write(f"Residue {res_key}: Distance calculation failed (None value present)\n")
+ 
             else:
                 log_file.write("\nNo lost positive residues detected.\n")
 
