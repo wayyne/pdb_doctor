@@ -9,7 +9,7 @@ Usage:
     python extract_sequence.py <input_directory>
 
 Input:
-    A directory containing PDB files with names in the format: <PDBID>_pp_C.pdb
+    A directory containing PDB files with names in the format: <PDBID><SUFFIX>.pdb
     (Each file contains one protein chain. The chain ID is not in the filename,
     so it is determined by reading the ATOM records.)
 
@@ -204,13 +204,18 @@ def diff_sequences(resolved_dict, full_dict):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python extract_sequence.py <input_directory>")
+        print("Usage: python extract_sequence.py <input_directory> [pdb_suffix]")
         sys.exit(1)
 
     input_dir = sys.argv[1]
     if not os.path.isdir(input_dir):
         print(f"Error: {input_dir} is not a valid directory.")
         sys.exit(1)
+
+    if len(sys.argv) == 3:
+      pdb_suffix = sys.argv[2]
+    else:
+      pdb_suffix = ".pdb"
 
     # Define output file names.
     complete_tsv = "complete.tsv"
@@ -233,7 +238,7 @@ def main():
         for filename in os.listdir(input_dir):
             if not filename.endswith(".pdb"):
                 continue
-            if "_pp_C.pdb" not in filename:
+            if pdb_suffix not in filename:
                 continue
 
             file_path = os.path.join(input_dir, filename)
