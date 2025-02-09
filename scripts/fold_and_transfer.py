@@ -27,6 +27,7 @@ import numpy as np
 import sys, os
 from tqdm import tqdm
 import warnings
+import math
 
 # Mute annoying warning
 warnings.filterwarnings("ignore", message="Entity ID not found in metadata, using None as default")
@@ -373,7 +374,7 @@ def transfer_missing_segments(partial_atoms, folded_atoms):
 
             adjusted_atoms, local_rmsd = local_stitch_segment(segment, folded_res, partial_res)
 
-            # Fix boundary bonds if needed (unchanged from your prior version)
+            # Fix boundary bonds if needed 
             _fix_boundary_bonds(chain, segment, partial_res, adjusted_atoms)
 
             event = {"chain": chain, "start": segment[0][1], "end": segment[-1][1], "rmsd": local_rmsd}
@@ -423,7 +424,7 @@ def fold_sequence(sequence, output_pdb):
 # 7. Amide Bond Sanity Check
 ########################################
 
-def check_amide_bonds(combined_atoms, transferred_events):
+def check_amide_bonds(combined_atoms, transferred_events, pdb_id):
     """
     For each inserted segment, report the left boundary AND the right boundary (if it exists).
     That is:
@@ -448,7 +449,7 @@ def check_amide_bonds(combined_atoms, transferred_events):
                 bond_length = np.linalg.norm(C_coord - N_coord)
                 print(f"Amide bond between {left_key} and {inserted_key}: {bond_length:.3f} Å")
                 if not (1.2 <= bond_length <= 1.5):
-                    print(f"Warning: Unusual amide bond length for residue {inserted_key}: {bond_length:.3f} Å")
+                    print(f"Warning: Unusual amide bond length for PDBID {pdb_id} residue {inserted_key}: {bond_length:.3f} Å")
             else:
                 print(f"Could not check left boundary bond for {inserted_key} (missing C or N).")
 
@@ -464,7 +465,7 @@ def check_amide_bonds(combined_atoms, transferred_events):
                 bond_length = np.linalg.norm(C_coord - N_coord)
                 print(f"Amide bond between {inserted_end_key} and {right_key}: {bond_length:.3f} Å")
                 if not (1.2 <= bond_length <= 1.5):
-                    print(f"Warning: Unusual amide bond length for residue {inserted_end_key}: {bond_length:.3f} Å")
+                    print(f"Warning: Unusual amide bond length for PDBID {pdb_id} residue {inserted_end_key}: {bond_length:.3f} Å")
             else:
                 print(f"Could not check right boundary bond for {inserted_end_key} (missing C or N).")
 
@@ -514,7 +515,7 @@ def fold_and_transfer(partial_pdb, sequence, output_pdb):
     for evt in transferred_events:
         print(f"  Chain {evt['chain']} residues {evt['start']}–{evt['end']}, local RMSD = {evt['rmsd']:.3f} Å")
 
-    check_amide_bonds(combined_atoms, transferred_events)
+    check_amide_bonds(combined_atoms, transferred_events, partial_pdb[:4])
 
     write_pdb(output_pdb, combined_atoms)
     print(f"Final chimeric structure written to {output_pdb}")
@@ -530,60 +531,86 @@ def fold_and_transfer(partial_pdb, sequence, output_pdb):
 
 def _fix_boundary_bonds(chain, segment, partial_res, adjusted_atoms):
     """
-    Exactly as before; we do a single-boundary translate or two-boundary rotate if needed.
+    Adjusts peptide bonds at segment boundaries. If both boundaries are incorrect,
+    it first corrects one boundary using translation, then rechecks and applies 
+    rotation in a defined plane to correct the other boundary.
     """
     if not segment:
         return
-    first_missing = segment[0][1]
-    last_missing  = segment[-1][1]
 
-    left_key  = (chain, first_missing - 1, "")
+    first_missing = segment[0][1]
+    last_missing = segment[-1][1]
+
+    left_key = (chain, first_missing - 1, "")
     right_key = (chain, last_missing + 1, "")
 
     seg_res = group_by_residue(adjusted_atoms)
 
+    # Retrieve backbone atoms for left boundary
     partial_left_C = None
     new_left_N = None
     if left_key in partial_res:
         left_bb = get_backbone_atoms(partial_res[left_key])
         partial_left_C = left_bb.get("C", None)
+
     this_left = (chain, first_missing, "")
     if this_left in seg_res:
         left_bb_new = get_backbone_atoms(seg_res[this_left])
         new_left_N = left_bb_new.get("N", None)
 
-    left_dist = None
-    if partial_left_C and new_left_N:
-        left_dist = _bond_dist(partial_left_C, new_left_N)
+    # Compute left bond distance
+    left_dist = _bond_dist(partial_left_C, new_left_N) if (partial_left_C and new_left_N) else None
 
+    # Retrieve backbone atoms for right boundary
     partial_right_N = None
     new_right_C = None
     if right_key in partial_res:
         right_bb = get_backbone_atoms(partial_res[right_key])
         partial_right_N = right_bb.get("N", None)
+
     this_right = (chain, last_missing, "")
     if this_right in seg_res:
         right_bb_new = get_backbone_atoms(seg_res[this_right])
         new_right_C = right_bb_new.get("C", None)
 
-    right_dist = None
-    if partial_right_N and new_right_C:
-        right_dist = _bond_dist(new_right_C, partial_right_N)
+    # Compute right bond distance
+    right_dist = _bond_dist(new_right_C, partial_right_N) if (partial_right_N and new_right_C) else None
 
-    desired = 1.33
+    desired = 1.33  # Desired peptide bond length
+
+    # Case 1: Only left boundary is incorrect → Translate left
     if left_dist and not right_dist:
         if not (1.2 <= left_dist <= 1.5):
             _translate_segment_for_boundary(partial_left_C, new_left_N, adjusted_atoms, desired)
+
+    # Case 2: Only right boundary is incorrect → Translate right
     elif right_dist and not left_dist:
         if not (1.2 <= right_dist <= 1.5):
             _translate_segment_for_boundary(partial_right_N, new_right_C, adjusted_atoms, desired)
+
+    # Case 3: Both boundaries are incorrect → Apply translation first, then rotation
     elif left_dist and right_dist:
-        left_ok  = (1.2 <= left_dist <= 1.5)
+        left_ok = (1.2 <= left_dist <= 1.5)
         right_ok = (1.2 <= right_dist <= 1.5)
-        if left_ok and not right_ok:
-            _rotate_segment_around_line(partial_left_C, new_left_N, partial_right_N, new_right_C, adjusted_atoms, desired)
-        elif right_ok and not left_ok:
-            _rotate_segment_around_line(partial_right_N, new_right_C, partial_left_C, new_left_N, adjusted_atoms, desired)
+
+        # Step 1: Apply translation to one boundary
+        fixed_atom = None  # Atom that remains fixed for rotation later
+        if not left_ok and not right_ok:
+            # Prefer translating left boundary first
+            _translate_segment_for_boundary(partial_left_C, new_left_N, adjusted_atoms, desired)
+            left_ok = True
+            fixed_atom = new_left_N  # The newly corrected atom
+
+        # Step 2: Recompute the other boundary's bond distance
+        if fixed_atom == new_left_N:
+            right_dist = _bond_dist(new_right_C, partial_right_N) if (partial_right_N and new_right_C) else None
+            right_ok = (1.2 <= right_dist <= 1.5)
+
+        # Step 3: Apply rotation using the now corrected boundary
+        if right_ok and not left_ok:
+            _rotate_segment_in_plane(fixed_atom, partial_left_C, new_left_N, adjusted_atoms, desired)
+        elif left_ok and not right_ok:
+            _rotate_segment_in_plane(fixed_atom, partial_right_N, new_right_C, adjusted_atoms, desired)
 
 def _bond_dist(a, b):
     dx = a["x"] - b["x"]
@@ -603,6 +630,63 @@ def _translate_segment_for_boundary(anchor, moved_atom, segment_atoms, desired_l
         atm["x"] += dx
         atm["y"] += dy
         atm["z"] += dz
+
+def _rotate_segment_in_plane(fixed_point, bond_atom1, bond_atom2, segment_atoms, desired_len):
+    """
+    Rotates the segment atoms around the fixed point in a plane defined by:
+    - The two atoms forming the amide bond to be corrected.
+    - The already corrected bond’s contributing atom (fixed_point).
+    
+    The function selects the optimal rotation angle to minimize bond length deviation.
+    
+    Parameters:
+    - fixed_point: Dict with 'x', 'y', 'z' of the atom that remains fixed.
+    - bond_atom1, bond_atom2: Dicts with 'x', 'y', 'z' for atoms forming the incorrect bond.
+    - segment_atoms: List of atoms in the segment to be rotated.
+    - desired_len: Target bond length for correction.
+    """
+    
+    # Compute the normal vector to define the rotation plane
+    vec1 = np.array([bond_atom1["x"] - fixed_point["x"],
+                     bond_atom1["y"] - fixed_point["y"],
+                     bond_atom1["z"] - fixed_point["z"]])
+    
+    vec2 = np.array([bond_atom2["x"] - fixed_point["x"],
+                     bond_atom2["y"] - fixed_point["y"],
+                     bond_atom2["z"] - fixed_point["z"]])
+    
+    plane_normal = np.cross(vec1, vec2)
+    plane_normal /= np.linalg.norm(plane_normal)  # Normalize
+
+    # Store original positions for restoring during testing
+    original_coords = [(atm, (atm["x"], atm["y"], atm["z"])) for atm in segment_atoms]
+
+    def restore_original():
+        for (atm, (ox, oy, oz)) in original_coords:
+            atm["x"], atm["y"], atm["z"] = ox, oy, oz
+
+    # Optimization: Test multiple angles and select the best
+    best_theta = None
+    best_diff = float("inf")
+    steps = 180  # Number of rotation steps
+
+    for i in range(steps + 1):
+        theta = 2 * math.pi * i / steps
+        rotate_all_around_point(segment_atoms, fixed_point, plane_normal, theta)
+        
+        dtest = _bond_dist(bond_atom1, bond_atom2)
+        diff = abs(dtest - desired_len)
+        
+        if diff < best_diff:
+            best_diff = diff
+            best_theta = theta
+        
+        restore_original()  # Reset for the next test
+
+    # Apply best rotation if improvement is significant
+    if best_theta is not None and best_diff < 0.3:
+        rotate_all_around_point(segment_atoms, fixed_point, plane_normal, best_theta)
+
 
 def _rotate_segment_around_line(fixA, fixB, offA, offB, segment_atoms, desired_len):
     import math
@@ -633,6 +717,47 @@ def _rotate_segment_around_line(fixA, fixB, offA, offB, segment_atoms, desired_l
 
     if best_theta is not None and best_diff < 0.3:
         rotate_all_around_line(segment_atoms, fixA, fixB, best_theta)
+
+def rotate_all_around_point(segment_atoms, fixed_point, plane_normal, theta):
+    """
+    Rotates all atoms in `segment_atoms` around a `fixed_point` within a plane 
+    defined by its normal vector `plane_normal` by an angle `theta` (radians).
+    
+    Parameters:
+    - segment_atoms: List of atom dictionaries with 'x', 'y', 'z' coordinates.
+    - fixed_point: Dict with 'x', 'y', 'z' defining the rotation center.
+    - plane_normal: Normalized numpy array (3,) defining the plane of rotation.
+    - theta: Rotation angle in radians.
+    """
+
+    # Ensure the normal is a unit vector
+    plane_normal = plane_normal / np.linalg.norm(plane_normal)
+
+    # Rodrigues' rotation formula components
+    K = np.array([
+        [0, -plane_normal[2], plane_normal[1]],
+        [plane_normal[2], 0, -plane_normal[0]],
+        [-plane_normal[1], plane_normal[0], 0]
+    ])
+    
+    I = np.eye(3)
+    R = I + math.sin(theta) * K + (1 - math.cos(theta)) * (K @ K)  # Rotation matrix
+
+    # Apply rotation to each atom in the segment
+    for atom in segment_atoms:
+        # Convert to vector relative to the fixed point
+        v = np.array([atom["x"] - fixed_point["x"],
+                      atom["y"] - fixed_point["y"],
+                      atom["z"] - fixed_point["z"]])
+
+        # Apply rotation
+        v_rot = R @ v
+
+        # Update atom coordinates
+        atom["x"] = fixed_point["x"] + v_rot[0]
+        atom["y"] = fixed_point["y"] + v_rot[1]
+        atom["z"] = fixed_point["z"] + v_rot[2]
+
 
 def rotate_all_around_line(segment_atoms, p1, p2, theta):
     axis = np.array([p2["x"] - p1["x"],

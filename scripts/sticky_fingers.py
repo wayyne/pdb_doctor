@@ -82,9 +82,9 @@ def transfer_hetatm_records(output_dir, og_pp_pdbs_dir):
     to their counterparts in output_dir.
     """
     for pdb_file in os.listdir(output_dir):
-        if pdb_file.endswith("_C.pdb"):
-            base_name = pdb_file[:7]  # Extract the first 7 characters
-            og_pdb_path = os.path.join(og_pp_pdbs_dir, f"{base_name}.pdb")
+        if pdb_file.endswith("_triaged_C.pdb"):
+            base_name = pdb_file[:4]  # Extract the first 7 characters
+            og_pdb_path = os.path.join(og_pp_pdbs_dir, f"{base_name}_pp.pdb")
             output_pdb_path = os.path.join(output_dir, pdb_file)
 
             if os.path.exists(og_pdb_path):
