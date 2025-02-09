@@ -33,6 +33,8 @@ THREE_TO_ONE = {
     "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V",
 }
 
+VALID_AA = set("ACDEFGHIKLMNPQRSTVWY")  # Set of valid amino acid characters
+
 ONE_TO_THREE = {
     "A": "ALA",
     "C": "CYS",

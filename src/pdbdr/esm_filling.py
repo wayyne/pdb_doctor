@@ -300,7 +300,7 @@ def fill_structure(mode, pdb_id, output_pdb, max_retries=5, rate_limit=5):
     filled_result = fill_struct(model, temp_full_pdb,
                                 max_retries=max_retries, rate_limit=rate_limit)
     if filled_result is None:
-        print("Failed to fill structure.")
+        print(f"Failed to fill structure: {pdb_id}.")
         sys.exit(1)
     filled_prot, seq_pos, full_seq = filled_result
 
