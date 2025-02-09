@@ -9,7 +9,8 @@ a partial structure using either a local or forge model.
 import argparse
 import sys
 import warnings
-import pdbdr as dr  # Custom PDB processing library
+import pdbdr as dr
+import os
 
 def main():
     """
@@ -74,9 +75,9 @@ def main():
     print(f"Global alignment RMSD: {global_rmsd:.3f} Å")
 
     # Save the transformed (aligned) filled structure.
-    fitted_filled_file = "fitted_filled.pdb"
-    dr.write_pdb(fitted_filled_file, filled_atoms)
-    print(f"Fitted filled structure written to {fitted_filled_file}")
+    #fitted_filled_file = "fitted_filled.pdb"
+    #dr.write_pdb(fitted_filled_file, filled_atoms)
+    #print(f"Fitted filled structure written to {fitted_filled_file}")
 
     # Transfer missing residues from the filled structure to the partial one.
     combined_atoms, transferred_events = dr.transfer_missing_segments(
@@ -100,12 +101,13 @@ def main():
     dr.write_pdb(output_pdb, combined_atoms)
     print(f"Final chimeric structure written to {output_pdb}")
 
+    os.remove(filled_temp)
 
 if __name__ == "__main__":
     # Suppress warnings about missing metadata; we know what we're doing!
-    warnings.filterwarnings(
-        "ignore",
-        message="Entity ID not found in metadata, using None as default"
-    )
+#   warnings.filterwarnings(
+#       "ignore",
+#       message="Entity ID not found in metadata, using None as default"
+#   )
     main()
 

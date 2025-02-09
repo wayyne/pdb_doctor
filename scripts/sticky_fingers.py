@@ -74,29 +74,49 @@ def write_pdb(filename, atoms):
             )
 
 ##########################################
-# Step 1: Transfer HETATM records
+# Step 1: Transfer HETATM records 
 ##########################################
 def transfer_hetatm_records(output_dir, og_pp_pdbs_dir):
     """
     Transfers HETATM records from the original pickpocket PDBs (in og_pp_pdbs_dir)
-    to their counterparts in output_dir.
+    to their counterparts in output_dir, avoiding duplicates based on atomic properties.
     """
     for pdb_file in os.listdir(output_dir):
         if pdb_file.endswith("_triaged_C.pdb"):
-            base_name = pdb_file[:4]  # Extract the first 7 characters
+            base_name = pdb_file[:4]  # Extract the first 4 characters (PDB ID)
             og_pdb_path = os.path.join(og_pp_pdbs_dir, f"{base_name}_pp.pdb")
             output_pdb_path = os.path.join(output_dir, pdb_file)
 
             if os.path.exists(og_pdb_path):
-                hetatm_records = []
-                with open(og_pdb_path, "r") as f:
-                    for line in f:
+                # Read existing HETATM records from the output PDB
+                existing_hetatms = set()
+                with open(output_pdb_path, "r") as f_out:
+                    for line in f_out:
                         if line.startswith("HETATM"):
-                            hetatm_records.append(line)
-                # Append the HETATM records to the output file
-                with open(output_pdb_path, "a") as f:
-                    f.writelines(hetatm_records)
-                print(f"Transferred HETATM records from {og_pdb_path} to {output_pdb_path}")
+                            key = (line[17:20].strip(),  # Residue name
+                                   line[21].strip(),      # Chain ID
+                                   int(line[22:26].strip()),  # Residue sequence number
+                                   line[12:16].strip())   # Atom name
+                            existing_hetatms.add(key)
+
+                # Collect new HETATM records from the original PDB
+                new_hetatm_records = []
+                with open(og_pdb_path, "r") as f_in:
+                    for line in f_in:
+                        if line.startswith("HETATM"):
+                            key = (line[17:20].strip(),  # Residue name
+                                   line[21].strip(),      # Chain ID
+                                   int(line[22:26].strip()),  # Residue sequence number
+                                   line[12:16].strip())   # Atom name
+                            if key not in existing_hetatms:  # Avoid duplicates
+                                new_hetatm_records.append(line)
+                                existing_hetatms.add(key)  # Add to set to prevent duplicates
+
+                # Append only unique HETATM records
+                if new_hetatm_records:
+                    with open(output_pdb_path, "a") as f_out:
+                        f_out.writelines(new_hetatm_records)
+                    print(f"Transferred {len(new_hetatm_records)} unique HETATM records from {og_pdb_path} to {output_pdb_path}")
 
 ##########################################
 # Step 2: Compute Contacts and Relabel PDB
@@ -216,16 +236,38 @@ def count_stats(atoms):
 def get_positive_residues(atoms):
     """
     Returns a set of residue identifiers (chain_id, res_seq, i_code) from ATOM records
-    that have temp_factor == 1.0.
+    where at least one atom has temp_factor > 0.
+
+    Grouping is done at the **residue** level using (chain_id, res_seq, i_code).
     """
-    pos_set = {}
+    residue_temp_factors = {}
+
     for atom in atoms:
         if atom["record_name"] == "ATOM":
             key = (atom["chain_id"], atom["res_seq"], atom["i_code"])
-            # If we haven't seen the residue, record its temp_factor.
-            if key not in pos_set:
-                pos_set[key] = atom["temp_factor"]
-    return {key for key, val in pos_set.items() if val == 1.0}
+            if key not in residue_temp_factors:
+                residue_temp_factors[key] = False  # Default to negative
+
+            # If any atom in this residue has temp_factor > 0, mark it as positive
+            if atom["temp_factor"] > 0:
+                residue_temp_factors[key] = True
+
+    # Return only residues where at least one atom had a positive temp_factor
+    return {key for key, is_positive in residue_temp_factors.items() if is_positive}
+
+def get_negative_residues(atoms):
+    """
+    Returns a set of residue identifiers (chain_id, res_seq, i_code) from ATOM records
+    that have temp_factor == 0.0.
+    """
+    neg_set = {}
+    for atom in atoms:
+        if atom["record_name"] == "ATOM":
+            key = (atom["chain_id"], atom["res_seq"], atom["i_code"])
+            if key not in neg_set:
+                neg_set[key] = atom["temp_factor"]
+    return {key for key, val in neg_set.items() if val == 0.0}
+
 
 ##########################################
 # Main: Process each output PDB and log details
@@ -272,10 +314,12 @@ def main():
                 ref_stats = count_stats(ref_atoms)
                 # Get positive residues from the reference file (based on stored beta-factors)
                 ref_positive_set = get_positive_residues(ref_atoms)
+                ref_negative_set = get_negative_residues(ref_atoms)
             else:
                 log_file.write("Reference PDB not found. Skipping stats for reference.\n")
                 ref_stats = (0, 0, 0, 0)
                 ref_positive_set = set()
+                ref_negative_set = set()
 
             # Relabel output PDB (this updates the file on disk)
             relabel_pdb_with_contacts(output_pdb_path)
@@ -285,12 +329,20 @@ def main():
             out_stats = count_stats(out_atoms)
             # Get positive residues from the new file (based on stored beta-factors)
             new_positive_set = get_positive_residues(out_atoms)
+            new_negative_set = get_negative_residues(out_atoms)
 
             # Compute differences (final - reference)
             diff_heavy = out_stats[0] - ref_stats[0]
             diff_residues = out_stats[1] - ref_stats[1]
-            diff_positives = out_stats[2] - ref_stats[2]
-            diff_negatives = out_stats[3] - ref_stats[3]
+
+            lost_positives = ref_positive_set - new_positive_set  # Residues that were positive but lost
+            gained_positives = new_positive_set - ref_positive_set  # Residues that became positive
+            diff_positives = len(gained_positives) - len(lost_positives)  # True net difference
+
+            lost_negatives = ref_negative_set - new_negative_set  # Residues that were negative but lost
+            gained_negatives = new_negative_set - ref_negative_set  # Residues that became negative
+            diff_negatives = len(gained_negatives) - len(lost_negatives)  # True net difference
+
 
             # Write details to the log file
             log_file.write(f"Heavy Atoms: Reference = {ref_stats[0]}, Final = {out_stats[0]}, Diff = {diff_heavy}\n")
