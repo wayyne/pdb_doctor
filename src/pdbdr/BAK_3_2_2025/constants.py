@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+Module: constants
+Author: [Your Name]
+Date: [YYYY-MM-DD]
+Description:
+    Centralizes constant definitions for the pdbdr package. Includes API
+    endpoints, atom types and ordering, amino acid code mappings (including
+    mappings for common modified residues), backbone atom names, van der Waals
+    radii, and standard bond lengths/angles.
+"""
 
 import math
 

@@ -21,6 +21,7 @@ Functions:
     fill_structure(mode, pdb_id, output_pdb, max_retries=5, rate_limit=5)
 """
 
+
 import numpy as np
 import torch
 import time
@@ -30,7 +31,7 @@ import sys
 import warnings
 
 from .constants import (FORGE_URL, FORGE_MDL, ATOM_TYPES, ATOM_ORDER, 
-                        ATOM_TYPE_NUM, THREE_TO_ONE, MODIFIED_RESIDUE_MAP)
+												ATOM_TYPE_NUM, THREE_TO_ONE, MODIFIED_RESIDUE_MAP)
 
 # Suppress specific warnings about missing metadata.
 warnings.filterwarnings(
@@ -53,7 +54,6 @@ warnings.filterwarnings(
     "ignore",
     message="Entity ID not found in metadata, using None as default"
 )
-
 def get_letter(res_name):
     """Return one-letter code for a residue name."""
     if len(res_name) == 1:
@@ -82,20 +82,6 @@ def pdb_to_tensor(file_path, chain_id=None):
 
     with open(file_path, "r") as f:
         pdb_lines = f.readlines()
-
-    # If the PDB file contains multiple models, only consider the first model.
-    if any(line.startswith("MODEL") for line in pdb_lines):
-        model_lines = []
-        in_first_model = False
-        for line in pdb_lines:
-            if line.startswith("MODEL"):
-                in_first_model = True
-                continue
-            if line.startswith("ENDMDL") and in_first_model:
-                break
-            if in_first_model:
-                model_lines.append(line)
-        pdb_lines = model_lines
 
     # If no chain specified, derive from first ATOM record.
     if chain_id is None:

@@ -29,8 +29,11 @@ import os
 import sys
 import warnings
 
-from .constants import (FORGE_URL, FORGE_MDL, ATOM_TYPES, ATOM_ORDER, 
-                        ATOM_TYPE_NUM, THREE_TO_ONE, MODIFIED_RESIDUE_MAP)
+from .constants import (
+    FORGE_URL, FORGE_MDL,
+    ATOM_TYPES, ATOM_ORDER, ATOM_TYPE_NUM,
+    THREE_TO_ONE
+)
 
 # Suppress specific warnings about missing metadata.
 warnings.filterwarnings(
@@ -38,85 +41,57 @@ warnings.filterwarnings(
     message="Entity ID not found in metadata, using None as default"
 )
 
-"""
-Module: esm_filling
-Author: [Your Name]
-Date: [YYYY-MM-DD]
-Description:
-    Provides functions for processing protein structures using ESM models.
-    This includes converting PDB files to tensor representations (with chain
-    filtering), filling missing structural information, and performing
-    sequence/structure corrections.
-"""
 
-warnings.filterwarnings(
-    "ignore",
-    message="Entity ID not found in metadata, using None as default"
-)
-
-def get_letter(res_name):
-    """Return one-letter code for a residue name."""
-    if len(res_name) == 1:
-        return res_name
-    return THREE_TO_ONE.get(res_name, MODIFIED_RESIDUE_MAP.get(res_name, "X"))
-
-def pdb_to_tensor(file_path, chain_id=None):
+def pdb_to_tensor(file_path):
     """
     Convert a PDB file to a tensor representation and extract sequences.
-    Only processes the specified chain (if provided). Parses missing and
-    resolved residues, and builds a tensor of shape
-    (num_residues, ATOM_TYPE_NUM, 3) with atom coordinates.
-    
+
+    This function parses a PDB file to identify resolved and missing
+    residues, then builds a tensor of shape
+    (num_residues, ATOM_TYPE_NUM, 3) containing atom coordinates.
+    It also produces an extracted sequence (using THREE_TO_ONE mapping)
+    and a masked sequence (missing residues are marked with "_").
+
     Args:
         file_path (str): Path to the PDB file.
-        chain_id (str): Chain identifier to filter records.
-    
-    Returns:
-        tuple: (torch.Tensor, str, str, dict)
-            - Coordinates tensor.
-            - Extracted one-letter sequence.
-            - Masked sequence (gaps marked as "_").
-            - Mapping from sequence index to residue ID.
-    """
-    from .pdb_io import parse_missing_residues
 
+    Returns:
+        tuple: (
+            torch.Tensor of coordinates,
+            str: extracted one-letter sequence,
+            str: masked sequence,
+            dict: mapping from sequence index to residue ID
+        )
+    """
+    # Initialize variables.
+    chain_id = None
+    missing_residues = {}
+    seq_position_map = {}
+
+    # Read the entire PDB file.
     with open(file_path, "r") as f:
         pdb_lines = f.readlines()
 
-    # If the PDB file contains multiple models, only consider the first model.
-    if any(line.startswith("MODEL") for line in pdb_lines):
-        model_lines = []
-        in_first_model = False
-        for line in pdb_lines:
-            if line.startswith("MODEL"):
-                in_first_model = True
-                continue
-            if line.startswith("ENDMDL") and in_first_model:
-                break
-            if in_first_model:
-                model_lines.append(line)
-        pdb_lines = model_lines
+    # Determine the chain ID from the first ATOM record.
+    for line in pdb_lines:
+        if line.startswith("ATOM"):
+            chain_id = line[21]
+            break
 
-    # If no chain specified, derive from first ATOM record.
-    if chain_id is None:
-        for line in pdb_lines:
-            if line.startswith("ATOM"):
-                chain_id = line[21].strip()
-                break
-    if chain_id is None:
-        raise ValueError("No chain ID found in PDB file and not provided.")
+    # If a chain is found, parse missing residues and expected sequence.
+    if chain_id:
+        from .pdb_io import parse_missing_residues, parse_seqres_records
+        missing_residues, seq_position_map = parse_missing_residues(
+            pdb_lines, chain_id
+        )
+        _ = parse_seqres_records(pdb_lines)  # Expected residues; unused here.
 
-    missing_residues, seq_position_map = parse_missing_residues(
-        pdb_lines, chain_id
-    )
-
+    # Collect resolved residues and their coordinates.
     resolved_residues = {}
-    # Process ATOM records.
     for line in pdb_lines:
         if not line.startswith("ATOM"):
             continue
-        if line[21].strip() != chain_id:
-            continue
+
         atom_name = line[12:16].strip()
         res_name = line[17:20].strip().upper()
         alt_loc = line[16:17].strip()
@@ -125,81 +100,72 @@ def pdb_to_tensor(file_path, chain_id=None):
         except ValueError:
             continue
         insertion_code = line[26].strip()
-        key = (res_seq, insertion_code)
+        full_res_id = (res_seq, insertion_code)
         try:
             x = float(line[30:38].strip())
             y = float(line[38:46].strip())
             z = float(line[46:54].strip())
         except ValueError:
             continue
+
+        # Skip alternate locations other than blank or "A".
         if alt_loc and alt_loc != "A":
             continue
-        if key not in resolved_residues:
-            resolved_residues[key] = {"res_name": res_name, "atoms": {}}
-        resolved_residues[key]["atoms"][atom_name] = [x, y, z]
 
-    # Process HETATM records for common modified residues.
-    for line in pdb_lines:
-        if not line.startswith("HETATM"):
-            continue
-        if line[21].strip() != chain_id:
-            continue
-        res_name = line[17:20].strip().upper()
-        if res_name not in MODIFIED_RESIDUE_MAP:
-            continue
-        alt_loc = line[16:17].strip()
-        if alt_loc and alt_loc != "A":
-            continue
-        try:
-            res_seq = int(line[22:26].strip())
-        except ValueError:
-            continue
-        insertion_code = line[26].strip()
-        key = (res_seq, insertion_code)
-        try:
-            x = float(line[30:38].strip())
-            y = float(line[38:46].strip())
-            z = float(line[46:54].strip())
-        except ValueError:
-            continue
-        # Map modified residue to canonical one-letter code.
-        canon = MODIFIED_RESIDUE_MAP.get(res_name)
-        if key not in resolved_residues:
-            resolved_residues[key] = {"res_name": canon, "atoms": {}}
-        atom_name = line[12:16].strip()
-        resolved_residues[key]["atoms"].setdefault(atom_name, [x, y, z])
+        if full_res_id not in resolved_residues:
+            resolved_residues[full_res_id] = {
+                "res_name": res_name,
+                "atoms": {}
+            }
+        resolved_residues[full_res_id]["atoms"][atom_name] = [x, y, z]
 
+    # Combine missing and resolved residues.
     complete_residues = {**missing_residues, **resolved_residues}
-    sorted_keys = sorted(complete_residues.keys(), key=lambda x: (x[0], x[1]))
+    sorted_residue_ids = sorted(
+        complete_residues.keys(), key=lambda x: (x[0], x[1])
+    )
 
     extracted_sequence = []
     masked_sequence = []
-    structured_residues = np.full((len(sorted_keys), ATOM_TYPE_NUM, 3),
-                                  np.nan, dtype=float)
+    # Preallocate a 3D array for atom coordinates.
+    structured_residues = np.full(
+        (len(sorted_residue_ids), ATOM_TYPE_NUM, 3),
+        np.nan, dtype=float
+    )
 
-    for i, res_id in enumerate(sorted_keys):
+    # Build sequences and fill coordinate tensor.
+    for i, res_id in enumerate(sorted_residue_ids):
         if res_id in resolved_residues:
             res_name = resolved_residues[res_id]["res_name"]
-            letter = get_letter(res_name)
-            extracted_sequence.append(letter)
+            extracted_sequence.append(THREE_TO_ONE.get(res_name, "X"))
         else:
+            # For missing residues, use the identity stored in missing_residues.
             res_name = missing_residues[res_id]
             extracted_sequence.append(res_name)
+
+        # Mask missing residues with an underscore.
         if res_id in missing_residues:
             masked_sequence.append("_")
         else:
-            letter = get_letter(res_name)
-            masked_sequence.append(letter)
+            masked_sequence.append(THREE_TO_ONE.get(res_name, "X"))
+
+        # Fill in available atom coordinates.
         if res_id in resolved_residues:
-            atoms = resolved_residues[res_id]["atoms"]
-            for aname, acoords in atoms.items():
+            residue_atoms = resolved_residues[res_id]["atoms"]
+            for aname, acoords in residue_atoms.items():
                 if aname in ATOM_ORDER:
                     structured_residues[i, ATOM_ORDER[aname]] = acoords
+
+        # Map sequence position to residue ID.
         seq_position_map[i + 1] = res_id
 
-    return (torch.tensor(structured_residues, dtype=torch.float32),
-            "".join(extracted_sequence), "".join(masked_sequence),
-            seq_position_map)
+    return (
+        torch.tensor(structured_residues, dtype=torch.float32),
+        "".join(extracted_sequence),
+        "".join(masked_sequence),
+        seq_position_map,
+    )
+
 
 def fill_struct(model, data_in, max_retries=5, rate_limit=5):
     """
