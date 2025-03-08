@@ -84,12 +84,12 @@ def main():
         partial_atoms, filled_atoms
     )
 
-    print(f"Inserted {len(transferred_events)} missing segments:")
-    for evt in transferred_events:
-        print(
-            f"  Chain {evt['chain']} residues {evt['start']}–{evt['end']}, "
-            f"local RMSD = {evt['rmsd']:.3f} Å"
-        )
+   #print(f"Inserted {len(transferred_events)} missing segments:")
+   #for evt in transferred_events:
+   #    print(
+   #        f"  Chain {evt['chain']} residues {evt['start']}–{evt['end']}, "
+   #        f"local RMSD = {evt['rmsd']:.3f} Å"
+   #    )
 
     # Check for any amide bond inconsistencies.
     dr.check_amide_bonds(combined_atoms, transferred_events, pdb_id)

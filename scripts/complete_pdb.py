@@ -16,6 +16,27 @@ OUTPUT_A_SUFFIX = "A"
 OUTPUT_B_SUFFIX = "B"
 OUTPUT_C_SUFFIX = "C"
 
+def filter_first_model(lines):
+    """
+    If the PDB file contains multiple models (indicated by "MODEL" records),
+    return only the lines from the first model (i.e. between the first "MODEL"
+    and the corresponding "ENDMDL"). Otherwise, return the original lines.
+    """
+    if any(line.startswith("MODEL") for line in lines):
+        model_lines = []
+        in_first_model = False
+        for line in lines:
+            if line.startswith("MODEL"):
+                in_first_model = True
+                continue
+            if line.startswith("ENDMDL") and in_first_model:
+                break
+            if in_first_model:
+                model_lines.append(line)
+        return model_lines
+    else:
+        return lines
+
 def main():
     parser = argparse.ArgumentParser(
         description=("Process PDB files: add missing heavy atoms, optimize with "
@@ -146,14 +167,17 @@ def process_pdb_file(pdb_file, input_dir, output_dir, scwrl4_path):
     try:
         # -------------------------------------------------------------
         # Step 0: Split input PDB into ATOM vs. HETATM (and remove 'END')
+        #         and restrict to the first model if multiple models are present.
         # -------------------------------------------------------------
         atom_temp_path = os.path.join(output_dir, f"{base_name}_atomtemp.pdb")
         hetatm_temp_path = os.path.join(output_dir, f"{base_name}_hetatmtemp.pdb")
 
-        with open(input_pdb_path, 'r') as fin, \
-             open(atom_temp_path, 'w') as atom_out, \
+        with open(input_pdb_path, 'r') as fin:
+            file_lines = fin.readlines()
+        file_lines = filter_first_model(file_lines)
+        with open(atom_temp_path, 'w') as atom_out, \
              open(hetatm_temp_path, 'w') as hetatm_out:
-            for line in fin:
+            for line in file_lines:
                 record = line[0:6].strip()
                 # Skip any 'END' lines; we'll add a final END ourselves later
                 if record == "END":
@@ -260,224 +284,6 @@ def process_pdb_file(pdb_file, input_dir, output_dir, scwrl4_path):
         log_messages.append(f"Error processing {pdb_file}: {e}")
         return False, log_messages, 0
 
-
-def recent_process_pdb_file(pdb_file, input_dir, output_dir, scwrl4_path):
-    log_messages = []
-    input_pdb_path = os.path.join(input_dir, pdb_file)
-    base_name = os.path.splitext(pdb_file)[0]
-    output_pdb_a = os.path.join(output_dir,
-                                f"{base_name}_{OUTPUT_A_SUFFIX}.pdb")
-    output_pdb_b = os.path.join(output_dir,
-                                f"{base_name}_{OUTPUT_B_SUFFIX}.pdb")
-    output_pdb_c = os.path.join(output_dir,
-                                f"{base_name}_{OUTPUT_C_SUFFIX}.pdb")
-
-    log_messages.append(f"Processing {pdb_file}...")
-
-    try:
-        # ----------------------------------------------------------------------
-        # Step 0: Split the input PDB into ATOM vs. HETATM
-        # ----------------------------------------------------------------------
-        atom_temp_path = os.path.join(output_dir, f"{base_name}_atomtemp.pdb")
-        hetatm_temp_path = os.path.join(output_dir, f"{base_name}_hetatmtemp.pdb")
-
-        with open(input_pdb_path, 'r') as fin, \
-             open(atom_temp_path, 'w') as atom_out, \
-             open(hetatm_temp_path, 'w') as hetatm_out:
-            for line in fin:
-                record = line[0:6].strip()
-                # Put HETATM lines in the hetatm-only file,
-                # everything else (ATOM, TER, etc.) in the atom-only file
-                if record == "HETATM":
-                    hetatm_out.write(line)
-                else:
-                    atom_out.write(line)
-
-        # From now on, we treat 'atom_temp_path' as our new "input PDB".
-        # ----------------------------------------------------------------------
-
-        # Read original input PDB atoms (for beta-factor reference)
-        original_atoms = read_pdb_atoms(atom_temp_path)  # <== changed from input_pdb_path
-        beta_factors, beta_factors_residue = get_beta_factors(original_atoms)
-
-        # Step 1: Run PDBFixer to add missing heavy atoms (using the ATOM-only file)
-        fixer = PDBFixer(filename=atom_temp_path)  # <== changed
-        fixer.findMissingResidues()
-        if fixer.missingResidues:
-            log_messages.append("  Missing residues detected:")
-            for chain_id in fixer.missingResidues:
-                res_ids = [str(res_id) for res_id in fixer.missingResidues[chain_id]]
-                log_messages.append(f"    Chain {chain_id}: Residues {', '.join(res_ids)}")
-        else:
-            log_messages.append("  No missing residues detected.")
-
-        fixer.findNonstandardResidues()
-        fixer.replaceNonstandardResidues()
-        fixer.findMissingAtoms()
-        if fixer.missingAtoms:
-            missing_atoms_total = 0
-            log_messages.append(f"  Missing atoms detected for {len(fixer.missingAtoms)} residues:")
-            for residue, atoms in fixer.missingAtoms.items():
-                chain_id = residue.chain.id
-                res_seq = residue.id
-                res_name = residue.name
-                atom_names = [atom.name for atom in atoms]
-                missing_atoms_total += len(atom_names)
-                log_messages.append(f"    Residue {res_name} {res_seq} (Chain {chain_id}): "
-                                    f"Missing atoms {', '.join(atom_names)}")
-        else:
-            missing_atoms_total = 0
-            log_messages.append("  No missing atoms detected.")
-
-        # Do not add hydrogens; only heavy atoms
-        fixer.addMissingAtoms()
-
-        # Save PDBFixer output (outputPDB-A)
-        with open(output_pdb_a, 'w') as f:
-            PDBFile.writeFile(fixer.topology, fixer.positions, f, keepIds=True)
-
-        # Transfer beta-factors to outputPDB-A
-        fixed_atoms = read_pdb_atoms(output_pdb_a)
-        fixed_atoms = assign_beta_factors(fixed_atoms, beta_factors, beta_factors_residue)
-        write_pdb_atoms(fixed_atoms, output_pdb_a)
-
-        log_messages.append(f"  Missing heavy atoms added and saved to {output_pdb_a}")
-
-        # Step 2: Run SCWRL4 on outputPDB-A to get outputPDB-B
-        scwrl_command = ['Scwrl4', '-i', output_pdb_a, '-o', output_pdb_b]
-        result = subprocess.run(scwrl_command, capture_output=True, text=True)
-        if result.returncode != 0:
-            log_messages.append(f"Error running SCWRL4 on {output_pdb_a}:\n{result.stderr}")
-            return False, log_messages, missing_atoms_total
-
-        # Transfer beta-factors to outputPDB-B
-        scwrl_atoms = read_pdb_atoms(output_pdb_b)
-        scwrl_atoms = assign_beta_factors(scwrl_atoms, beta_factors, beta_factors_residue)
-        write_pdb_atoms(scwrl_atoms, output_pdb_b)
-
-        log_messages.append(f"  SCWRL4 optimization completed and saved to {output_pdb_b}")
-
-        # Step 3: Create outputPDB-C by merging coordinates and transferring beta-factors
-        create_output_pdb_c(original_atoms, fixed_atoms, scwrl_atoms, output_pdb_c)
-        log_messages.append(f"  Merged PDB saved to {output_pdb_c}")
-
-        # ----------------------------------------------------------------------
-        # Step 4: Append the HETATM lines to each final output PDB
-        # ----------------------------------------------------------------------
-        for out_file in (output_pdb_a, output_pdb_b, output_pdb_c):
-            with open(out_file, 'a') as fout, open(hetatm_temp_path, 'r') as hetf:
-                for line in hetf:
-                    fout.write(line)
-
-        # Housekeeping
-        os.remove(atom_temp_path)
-        os.remove(hetatm_temp_path)
-
-        return True, log_messages, missing_atoms_total
-
-    except Exception as e:
-        log_messages.append(f"Error processing {pdb_file}: {e}")
-        return False, log_messages, 0
-
-
-def old_process_pdb_file(pdb_file, input_dir, output_dir, scwrl4_path):
-    log_messages = []
-    input_pdb_path = os.path.join(input_dir, pdb_file)
-    base_name = os.path.splitext(pdb_file)[0]
-    output_pdb_a = os.path.join(output_dir,
-                                f"{base_name}_{OUTPUT_A_SUFFIX}.pdb")
-    output_pdb_b = os.path.join(output_dir,
-                                f"{base_name}_{OUTPUT_B_SUFFIX}.pdb")
-    output_pdb_c = os.path.join(output_dir,
-                                f"{base_name}_{OUTPUT_C_SUFFIX}.pdb")
-
-    log_messages.append(f"Processing {pdb_file}...")
-
-    try:
-        # Read original input PDB atoms with beta-factors
-        original_atoms = read_pdb_atoms(input_pdb_path)
-        beta_factors, beta_factors_residue = get_beta_factors(original_atoms)
-
-        # Step 1: Run PDBFixer to add missing heavy atoms
-        fixer = PDBFixer(filename=input_pdb_path)
-        fixer.findMissingResidues()
-        if fixer.missingResidues:
-            log_messages.append("  Missing residues detected:")
-            for chain_id in fixer.missingResidues:
-                res_ids = [str(res_id) for res_id in fixer.missingResidues[chain_id]]
-                log_messages.append(f"    Chain {chain_id}: Residues "
-                                    f"{', '.join(res_ids)}")
-        else:
-            log_messages.append("  No missing residues detected.")
-
-        fixer.findNonstandardResidues()
-        fixer.replaceNonstandardResidues()
-        fixer.findMissingAtoms()
-        if fixer.missingAtoms:
-            missing_atoms_total = 0
-            log_messages.append(f"  Missing atoms detected for "
-                                f"{len(fixer.missingAtoms)} residues:")
-            for residue, atoms in fixer.missingAtoms.items():
-                chain_id = residue.chain.id
-                res_seq = residue.id
-                res_name = residue.name
-                atom_names = [atom.name for atom in atoms]
-                missing_atoms_total += len(atom_names)
-                log_messages.append(f"    Residue {res_name} {res_seq} "
-                                    f"(Chain {chain_id}): Missing atoms "
-                                    f"{', '.join(atom_names)}")
-        else:
-            missing_atoms_total = 0
-            log_messages.append("  No missing atoms detected.")
-
-        # Do not add hydrogens
-        # fixer.addMissingHydrogens()
-        # Add missing heavy atoms only
-        fixer.addMissingAtoms()
-
-        # Save PDBFixer output (outputPDB-A)
-        with open(output_pdb_a, 'w') as f:
-            PDBFile.writeFile(fixer.topology, fixer.positions, f, keepIds=True)
-
-        # Transfer beta-factors to outputPDB-A
-        fixed_atoms = read_pdb_atoms(output_pdb_a)
-        fixed_atoms = assign_beta_factors(fixed_atoms, beta_factors,
-                                          beta_factors_residue)
-        write_pdb_atoms(fixed_atoms, output_pdb_a)
-
-        log_messages.append(f"  Missing heavy atoms added and saved to "
-                            f"{output_pdb_a}")
-
-        # Step 2: Run SCWRL4 on outputPDB-A to get outputPDB-B
-        scwrl_command = ['Scwrl4', '-i', output_pdb_a, '-o', output_pdb_b]
-        result = subprocess.run(scwrl_command, capture_output=True,
-                                text=True)
-        if result.returncode != 0:
-            log_messages.append(f"Error running SCWRL4 on {output_pdb_a}:\n"
-                                f"{result.stderr}")
-            return False, log_messages, missing_atoms_total
-
-        # Transfer beta-factors to outputPDB-B
-        scwrl_atoms = read_pdb_atoms(output_pdb_b)
-        scwrl_atoms = assign_beta_factors(scwrl_atoms, beta_factors,
-                                          beta_factors_residue)
-        write_pdb_atoms(scwrl_atoms, output_pdb_b)
-
-        log_messages.append(f"  SCWRL4 optimization completed and saved to "
-                            f"{output_pdb_b}")
-
-        # Step 3: Create outputPDB-C by merging coordinates and transferring
-        # beta-factors
-        create_output_pdb_c(original_atoms, fixed_atoms, scwrl_atoms,
-                            output_pdb_c)
-        log_messages.append(f"  Merged PDB saved to {output_pdb_c}")
-
-        return True, log_messages, missing_atoms_total
-
-    except Exception as e:
-        log_messages.append(f"Error processing {pdb_file}: {e}")
-        return False, log_messages, 0
-
 def process_pdb_file_complete(pdb_file, input_dir, output_dir, 
                               scwrl4_path, restore_mode):
     log_messages = []
@@ -489,11 +295,10 @@ def process_pdb_file_complete(pdb_file, input_dir, output_dir,
                                 f"{base_name}_{OUTPUT_B_SUFFIX}_complete.pdb")
     output_pdb_c = os.path.join(output_dir,
                                 f"{base_name}_{OUTPUT_C_SUFFIX}_complete.pdb")
-    log_messages.append(f"Processing {pdb_file} for complete missing "
-                        "residues...")
+    log_messages.append(f"Processing {pdb_file} for complete missing residues...")
 
     try:
-        # Read original input PDB atoms with beta-factors
+        # Read original input PDB atoms with beta-factors (filtered to first model)
         original_atoms = read_pdb_atoms(input_pdb_path)
         beta_factors, beta_factors_residue = get_beta_factors(original_atoms)
 
@@ -536,21 +341,17 @@ def process_pdb_file_complete(pdb_file, input_dir, output_dir,
                         filtered.append(res)
                 if filtered:
                     filtered_missing[chain_id] = filtered
-
         fixer.missingResidues = filtered_missing
 
         if filtered_missing:
             log_messages.append("  Missing residues to be restored:")
             for chain_id in filtered_missing:
                 res_ids = [str(r) for r in filtered_missing[chain_id]]
-                log_messages.append(f"    Chain {chain_id}: Residues "
-                                    f"{', '.join(res_ids)}")
+                log_messages.append(f"    Chain {chain_id}: Residues {', '.join(res_ids)}")
         else:
-            log_messages.append("  No missing residues to restore based on "
-                                f"restore mode '{restore_mode}'.")
+            log_messages.append("  No missing residues to restore based on restore mode "
+                                f"'{restore_mode}'.")
 
-        # Insert missing residues. This assumes PDBFixer has this method.
-        #fixer.insertMissingResidues()
         fixer.findNonstandardResidues()
         fixer.replaceNonstandardResidues()
         fixer.findMissingAtoms()
@@ -562,33 +363,25 @@ def process_pdb_file_complete(pdb_file, input_dir, output_dir,
 
         # Transfer beta-factors to outputPDB-A
         fixed_atoms = read_pdb_atoms(output_pdb_a)
-        fixed_atoms = assign_beta_factors(fixed_atoms, beta_factors,
-                                          beta_factors_residue)
+        fixed_atoms = assign_beta_factors(fixed_atoms, beta_factors, beta_factors_residue)
         write_pdb_atoms(fixed_atoms, output_pdb_a)
 
-        log_messages.append(f"  Missing residues and heavy atoms added and "
-                            f"saved to {output_pdb_a}")
+        log_messages.append(f"  Missing residues and heavy atoms added and saved to {output_pdb_a}")
 
         # Step 2: Run SCWRL4 on outputPDB-A to get outputPDB-B
         scwrl_command = ['Scwrl4', '-i', output_pdb_a, '-o', output_pdb_b]
-        result = subprocess.run(scwrl_command, capture_output=True,
-                                text=True)
+        result = subprocess.run(scwrl_command, capture_output=True, text=True)
         if result.returncode != 0:
-            log_messages.append(f"Error running SCWRL4 on {output_pdb_a}:\n"
-                                f"{result.stderr}")
+            log_messages.append(f"Error running SCWRL4 on {output_pdb_a}:\n{result.stderr}")
             return False, log_messages, 0
 
         scwrl_atoms = read_pdb_atoms(output_pdb_b)
-        scwrl_atoms = assign_beta_factors(scwrl_atoms, beta_factors,
-                                          beta_factors_residue)
+        scwrl_atoms = assign_beta_factors(scwrl_atoms, beta_factors, beta_factors_residue)
         write_pdb_atoms(scwrl_atoms, output_pdb_b)
-        log_messages.append(f"  SCWRL4 optimization completed and saved to "
-                            f"{output_pdb_b}")
+        log_messages.append(f"  SCWRL4 optimization completed and saved to {output_pdb_b}")
 
-        # Step 3: Create outputPDB-C by merging coordinates and transferring
-        # beta-factors
-        create_output_pdb_c(original_atoms, fixed_atoms, scwrl_atoms,
-                            output_pdb_c)
+        # Step 3: Create outputPDB-C by merging coordinates and transferring beta-factors
+        create_output_pdb_c(original_atoms, fixed_atoms, scwrl_atoms, output_pdb_c)
         log_messages.append(f"  Merged PDB saved to {output_pdb_c}")
 
         # For complete mode, missing_atoms_total is not directly applicable.
@@ -677,33 +470,35 @@ def create_output_pdb_c(original_atoms, fixed_atoms, scwrl_atoms,
 def read_pdb_atoms(pdb_file_path):
     atoms = []
     with open(pdb_file_path, 'r') as pdb_file:
-        serial_counter = 1  # To handle missing serial numbers
-        for line in pdb_file:
-            if line.startswith(('ATOM', 'HETATM')):
-                try:
-                    serial = line[6:11].strip()
-                    serial = int(serial) if serial else serial_counter
-                    atom = {
-                        'record_name': line[0:6].strip(),
-                        'serial': serial,
-                        'atom_name': line[12:16].strip(),
-                        'alt_loc': line[16].strip(),
-                        'res_name': line[17:20].strip(),
-                        'chain_id': line[21].strip(),
-                        'res_seq': line[22:26].strip(),
-                        'i_code': line[26].strip(),
-                        'x': float(line[30:38].strip()),
-                        'y': float(line[38:46].strip()),
-                        'z': float(line[46:54].strip()),
-                        'occupancy': float(line[54:60].strip() or '1.00'),
-                        'temp_factor': float(line[60:66].strip() or '0.00'),
-                        'element': line[76:78].strip(),
-                        'charge': line[78:80].strip()
-                    }
-                    atoms.append(atom)
-                    serial_counter += 1
-                except ValueError:
-                    continue  # Skip lines with parsing issues
+        file_lines = pdb_file.readlines()
+    file_lines = filter_first_model(file_lines)
+    serial_counter = 1  # To handle missing serial numbers
+    for line in file_lines:
+        if line.startswith(('ATOM', 'HETATM')):
+            try:
+                serial = line[6:11].strip()
+                serial = int(serial) if serial else serial_counter
+                atom = {
+                    'record_name': line[0:6].strip(),
+                    'serial': serial,
+                    'atom_name': line[12:16].strip(),
+                    'alt_loc': line[16].strip(),
+                    'res_name': line[17:20].strip(),
+                    'chain_id': line[21].strip(),
+                    'res_seq': line[22:26].strip(),
+                    'i_code': line[26].strip(),
+                    'x': float(line[30:38].strip()),
+                    'y': float(line[38:46].strip()),
+                    'z': float(line[46:54].strip()),
+                    'occupancy': float(line[54:60].strip() or '1.00'),
+                    'temp_factor': float(line[60:66].strip() or '0.00'),
+                    'element': line[76:78].strip(),
+                    'charge': line[78:80].strip()
+                }
+                atoms.append(atom)
+                serial_counter += 1
+            except ValueError:
+                continue  # Skip lines with parsing issues
     return atoms
 
 def write_pdb_atoms(atoms, output_file_path):

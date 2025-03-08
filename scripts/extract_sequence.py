@@ -29,10 +29,10 @@ def process_single_file(args):
     # Extract sequence using pdb_to_tensor
     try:
         _, extracted_sequence, masked_sequence, _ = dr.pdb_to_tensor(cached_pdb)
+        print(extracted_sequence)
     except Exception as e:
         log_output.append(f"Error: Exception processing {pdb_id} using pdb_to_tensor: {e}\n")
         return (filename, "", "".join(log_output), "error")
-    
     is_incomplete = '_' in masked_sequence
     has_noncanonical = any(c not in dr.VALID_AA for c in extracted_sequence)
     
