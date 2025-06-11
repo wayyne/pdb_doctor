@@ -39,12 +39,51 @@ ONE_TO_THREE = {
 }
 
 # --- Modified Residues Mapping ---
+# --- Modified Residues Mapping ---
 MODIFIED_RESIDUE_MAP = {
+    # Phosphorylations
     "SEP": "S",  # Phosphoserine
     "TPO": "T",  # Phosphothreonine
     "PTR": "Y",  # Phosphotyrosine
+
+    # Oxidations and Hydroxylations
     "CSO": "C",  # S-hydroxycysteine
+    "HYP": "P",  # Hydroxyproline
+    "MLY": "K",  # N6-methyllysine
+    "M3L": "K",  # N6,N6,N6-trimethyllysine
+    "HIC": "H",  # 4-methyl-histidine
+
+    # Seleno and sulfur analogs
     "MSE": "M",  # Selenomethionine
+    "SEC": "C",  # Selenocysteine (map to cysteine if ESM can't handle SEC)
+
+    # Modified cysteines
+    "CME": "C",  # S,S-(2-hydroxyethyl)cysteine
+    "CSX": "C",  # S-oxycysteine
+    "CSS": "C",  # Cystine
+    "ACY": "C",  # S-acetylcysteine
+
+    # Acetylations and methylations
+    "ALY": "K",  # N-acetyllysine
+    "MLZ": "K",  # Methyllysine
+    "M2L": "K",  # Dimethyllysine
+    "M3L": "K",  # Trimethyllysine
+    "AIB": "A",  # Alpha-aminoisobutyric acid (closest: alanine)
+
+    # Glycosylations (map to base residue)
+    "NAG": "N",  # N-acetylglucosamine-modified asparagine (approx. map)
+    "BMA": "N",  # Beta-mannose-modified Asn
+
+    # Formyl, pyro-Glu, and others
+    "FME": "M",  # N-formylmethionine
+    "PCA": "E",  # Pyro-glutamic acid from glutamate
+    "OCS": "C",  # Cysteine sulfinic acid
+
+    # Miscellaneous
+    "ORN": "R",  # Ornithine (nonstandard, closest: arginine)
+    "DPR": "P",  # D-proline (assume normal L-proline)
+    "DGL": "E",  # D-glutamate (map to E)
+    "DGN": "Q",  # D-glutamine (map to Q)
 }
 
 # --- Backbone and Structural Constants ---
