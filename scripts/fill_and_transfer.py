@@ -32,8 +32,15 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["local", "forge"],
-        default="local",
+        default="forge",
         help="Model initialization mode: 'local' (default) or 'forge'."
+    )
+    parser.add_argument(
+        "--chain",
+        dest="chain_id",
+        default=None,
+        help="Chain ID from the full PDB to use (others will be stripped). "
+             "If omitted, the first ATOM chain in the file will be used."
     )
     args = parser.parse_args()
 
@@ -42,12 +49,14 @@ def main():
 
     partial_pdb = args.partial_pdb
     pdb_id = args.pdb_id.strip()
+    print(f"Working on {pdb_id}")
     output_pdb = args.output
     mode = args.mode
+    chain_id = (args.chain_id or "").strip() if args.chain_id is not None else None
     filled_temp = "filled_temp.pdb"
 
     # Use the unified fill_structure() function (mode selects local or forge).
-    full_seq = dr.fill_structure(mode, pdb_id, filled_temp)
+    full_seq = dr.fill_structure(mode, pdb_id, filled_temp, chain_id=chain_id)
 
     try:
         # Load both partial and full (filled) structures.
@@ -74,28 +83,13 @@ def main():
     global_rmsd = dr.compute_alignment_rmsd(partial_atoms, filled_atoms, common_keys)
     print(f"Global alignment RMSD: {global_rmsd:.3f} Å")
 
-    # Save the transformed (aligned) filled structure.
-    #fitted_filled_file = "fitted_filled.pdb"
-    #dr.write_pdb(fitted_filled_file, filled_atoms)
-    #print(f"Fitted filled structure written to {fitted_filled_file}")
-
     # Transfer missing residues from the filled structure to the partial one.
     combined_atoms, transferred_events = dr.transfer_missing_segments(
         partial_atoms, filled_atoms
     )
 
-   #print(f"Inserted {len(transferred_events)} missing segments:")
-   #for evt in transferred_events:
-   #    print(
-   #        f"  Chain {evt['chain']} residues {evt['start']}–{evt['end']}, "
-   #        f"local RMSD = {evt['rmsd']:.3f} Å"
-   #    )
-
     # Check for any amide bond inconsistencies.
     dr.check_amide_bonds(combined_atoms, transferred_events, pdb_id)
-
-    # Check for steric clashes.
-    #dr.check_structure_for_clashes(combined_atoms, transferred_events, tolerance=2.25)
 
     # Save the final chimeric structure.
     dr.write_pdb(output_pdb, combined_atoms)
@@ -104,10 +98,5 @@ def main():
     os.remove(filled_temp)
 
 if __name__ == "__main__":
-    # Suppress warnings about missing metadata; we know what we're doing!
-#   warnings.filterwarnings(
-#       "ignore",
-#       message="Entity ID not found in metadata, using None as default"
-#   )
     main()
 

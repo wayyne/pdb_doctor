@@ -8,6 +8,8 @@ import pdbdr as dr
 
 def process_single_file(args):
     (filename, input_dir, pdb_suffix, cache_dir) = args
+    print(f"filename: {filename}")
+    _,_,_,_,chain_of_interest = dr.pdb_to_tensor(filename)
     log_output = []
     pdb_id = filename.split("_")[0]
     cached_pdb = os.path.join(cache_dir, f"{pdb_id.upper()}.pdb")
@@ -15,6 +17,7 @@ def process_single_file(args):
     # Download the full PDB file if not cached
     if not os.path.exists(cached_pdb):
         url = f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb"
+        print(url)
         try:
             response = requests.get(url)
             if response.status_code != 200:
@@ -28,7 +31,7 @@ def process_single_file(args):
     
     # Extract sequence using pdb_to_tensor
     try:
-        _, extracted_sequence, masked_sequence, _ = dr.pdb_to_tensor(cached_pdb)
+        _, extracted_sequence, masked_sequence, _, _ = dr.pdb_to_tensor(cached_pdb,chain_of_interest)
         print(extracted_sequence)
     except Exception as e:
         log_output.append(f"Error: Exception processing {pdb_id} using pdb_to_tensor: {e}\n")
@@ -45,7 +48,7 @@ def process_single_file(args):
     else:
         category = "complete"
 
-    return (filename, extracted_sequence, "".join(log_output), category)
+    return (filename, extracted_sequence, "".join(log_output), category, chain_of_interest)
 
 def main():
     if len(sys.argv) < 2:
@@ -73,7 +76,7 @@ def main():
          open(incomplete_tsv, "w") as incomp_f, \
          open(corrupt_tsv, "w") as corrupt_f:
         
-        header = "PDB_File\tMost_True_Sequence\n"
+        header = "PDB_File\tChain_of_Interest\tMost_True_Sequence\n"
         comp_f.write(header)
         incomp_f.write(header)
         corrupt_f.write(header)
@@ -84,16 +87,16 @@ def main():
                 [(f, input_dir, pdb_suffix, cache_dir) for f in files_to_process]
             )
         
-        for (filename, full_sequence, log_text, category) in results:
+        for (filename, full_sequence, log_text, category, chain_of_interest) in results:
             if category == "error":
                 log_f.write(log_text)
                 continue
             elif category == "complete":
-                comp_f.write(f"{filename}\t{full_sequence}\n")
+                comp_f.write(f"{filename}\t{chain_of_interest}\t{full_sequence}\n")
             elif category == "incomplete":
-                incomp_f.write(f"{filename}\t{full_sequence}\n")
+                incomp_f.write(f"{filename}\t{chain_of_interest}\t{full_sequence}\n")
             elif category == "corrupt":
-                corrupt_f.write(f"{filename}\t{full_sequence}\n")
+                corrupt_f.write(f"{filename}\t{chain_of_interest}\t{full_sequence}\n")
 
             log_f.write(log_text)
 

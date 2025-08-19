@@ -71,7 +71,7 @@ MODIFIED_RESIDUE_MAP = {
     "AIB": "A",  # Alpha-aminoisobutyric acid (closest: alanine)
 
     # Glycosylations (map to base residue)
-    "NAG": "N",  # N-acetylglucosamine-modified asparagine (approx. map)
+#    "NAG": "N",  # N-acetylglucosamine-modified asparagine (approx. map)
     "BMA": "N",  # Beta-mannose-modified Asn
 
     # Formyl, pyro-Glu, and others

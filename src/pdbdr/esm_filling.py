@@ -60,6 +60,8 @@ def get_letter(res_name):
         return res_name
     return THREE_TO_ONE.get(res_name, MODIFIED_RESIDUE_MAP.get(res_name, "X"))
 
+# --- snip: top of file remains unchanged ---
+
 def pdb_to_tensor(file_path, chain_id=None):
     """
     Convert a PDB file to a tensor representation and extract sequences.
@@ -72,11 +74,12 @@ def pdb_to_tensor(file_path, chain_id=None):
         chain_id (str): Chain identifier to filter records.
     
     Returns:
-        tuple: (torch.Tensor, str, str, dict)
+        tuple: (torch.Tensor, str, str, dict, str)
             - Coordinates tensor.
             - Extracted one-letter sequence.
             - Masked sequence (gaps marked as "_").
             - Mapping from sequence index to residue ID.
+            - The chain_id actually used.
     """
     from .pdb_io import parse_missing_residues
 
@@ -102,6 +105,7 @@ def pdb_to_tensor(file_path, chain_id=None):
         for line in pdb_lines:
             if line.startswith("ATOM"):
                 chain_id = line[21].strip()
+                print(f"found chainID: {chain_id}")
                 break
     if chain_id is None:
         raise ValueError("No chain ID found in PDB file and not provided.")
@@ -162,7 +166,6 @@ def pdb_to_tensor(file_path, chain_id=None):
             z = float(line[46:54].strip())
         except ValueError:
             continue
-        # Map modified residue to canonical one-letter code.
         canon = MODIFIED_RESIDUE_MAP.get(res_name)
         if key not in resolved_residues:
             resolved_residues[key] = {"res_name": canon, "atoms": {}}
@@ -199,19 +202,17 @@ def pdb_to_tensor(file_path, chain_id=None):
 
     return (torch.tensor(structured_residues, dtype=torch.float32),
             "".join(extracted_sequence), "".join(masked_sequence),
-            seq_position_map)
+            seq_position_map, chain_id)
 
-def fill_struct(model, data_in, max_retries=5, rate_limit=5):
+
+def fill_struct(model, data_in, chain_id=None, max_retries=5, rate_limit=5):
     """
     Fill missing structure information using a provided ESM model.
-
-    Given a PDB file path, this function converts the structure to a tensor,
-    prepares a prompt with masked regions, and iteratively calls the model
-    to generate a complete structure. It implements simple rate limiting.
 
     Args:
         model: The ESM model instance (local or remote).
         data_in (str): Path to the input PDB file.
+        chain_id (str|None): Chain to use. If None, inferred from PDB.
         max_retries (int): Maximum number of retries in case of rate limits.
         rate_limit (int): Maximum allowed calls per minute.
 
@@ -222,10 +223,9 @@ def fill_struct(model, data_in, max_retries=5, rate_limit=5):
     from esm.sdk.api import ESMProtein, GenerationConfig
 
     # Convert PDB to tensor and extract sequences.
-    x, full_seq, mskd_seq, seq_pos = pdb_to_tensor(data_in)
+    x, full_seq, mskd_seq, seq_pos, chain_id = pdb_to_tensor(data_in, chain_id)
     pdb_indices = [i for i, char in enumerate(mskd_seq) if char != "_"]
 
-    # Prepare template protein and token encodings.
     template_prot = ESMProtein(
         sequence=full_seq, coordinates=x,
         potential_sequence_of_concern=True
@@ -273,20 +273,34 @@ def fill_struct(model, data_in, max_retries=5, rate_limit=5):
                 break
     return None
 
+def _filter_pdb_by_chain_text(pdb_text: str, chain_id: str) -> str:
+    out_lines = []
+    for line in pdb_text.splitlines(True):
+        rec = line[0:6].strip()
+        # keep ONLY ATOM/ANISOU/TER for the requested chain
+        if rec in ("ATOM", "ANISOU", "TER"):
+            if line[21:22] == chain_id or (chain_id == "" and line[21:22] == " "):
+                out_lines.append(line)
+        elif rec in ("MODEL", "ENDMDL"):
+            continue
+        else:
+            out_lines.append(line)
+    if any(l.startswith(("ATOM", "ANISOU")) for l in out_lines) and not any(l.startswith("TER") for l in out_lines):
+        out_lines.append("TER\n")
+    out_lines.append("END\n")
+    return "".join(out_lines)
 
-def fill_structure(mode, pdb_id, output_pdb, max_retries=5, rate_limit=5):
+
+def fill_structure(mode, pdb_id, output_pdb, chain_id=None, max_retries=5, rate_limit=5):
     """
     Fill missing structure using either a local ESM model or the Forge API.
-
-    This function downloads the PDB file from RCSB, instantiates the ESM model
-    based on the specified mode, fills in missing structural information, applies
-    post-processing (residue numbering corrections), and writes the resulting
-    structure to a PDB file.
 
     Args:
         mode (str): "local" or "forge" to select the ESM model backend.
         pdb_id (str): The PDB identifier.
         output_pdb (str): Output file path for the filled structure.
+        chain_id (str|None): Chain to keep from the downloaded PDB. If None,
+            the first ATOM chain is used.
         max_retries (int): Maximum number of retries for model generation.
         rate_limit (int): Maximum allowed calls per minute to the model API.
 
@@ -296,15 +310,32 @@ def fill_structure(mode, pdb_id, output_pdb, max_retries=5, rate_limit=5):
     import requests
     from .pdb_io import read_pdb, write_pdb
 
-    # Download PDB file from RCSB.
     pdb_url = f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb"
     temp_full_pdb = "temp_full.pdb"
+
     r = requests.get(pdb_url)
     if r.status_code != 200:
         print(f"Error fetching PDB file for {pdb_id} from RCSB")
         sys.exit(1)
+
+    pdb_text = r.text
+
+    # If chain_id provided, strip other chains before any processing.
+    # If not provided, infer from first ATOM and then strip others.
+    if chain_id is None:
+        inferred = None
+        for line in pdb_text.splitlines():
+            if line.startswith("ATOM"):
+                inferred = line[21].strip()
+                break
+        if inferred is None:
+            print("No ATOM records found to infer chain ID.")
+            sys.exit(1)
+        chain_id = inferred
+
+    filtered_text = _filter_pdb_by_chain_text(pdb_text, chain_id)
     with open(temp_full_pdb, "w") as f:
-        f.write(r.text)
+        f.write(filtered_text)
 
     # Instantiate the ESM model based on the selected mode.
     if mode.lower() == "local":
@@ -330,11 +361,13 @@ def fill_structure(mode, pdb_id, output_pdb, max_retries=5, rate_limit=5):
     else:
         raise ValueError("Mode must be 'local' or 'forge'.")
 
-    # Fill the structure using the model.
-    filled_result = fill_struct(model, temp_full_pdb,
-                                max_retries=max_retries, rate_limit=rate_limit)
+    # Fill the structure using the model (only the selected chain).
+    filled_result = fill_struct(
+        model, temp_full_pdb, chain_id=chain_id,
+        max_retries=max_retries, rate_limit=rate_limit
+    )
     if filled_result is None:
-        print(f"Failed to fill structure: {pdb_id}.")
+        print(f"Failed to fill structure: {pdb_id} chain {chain_id}.")
         sys.exit(1)
     filled_prot, seq_pos, full_seq = filled_result
 
@@ -353,7 +386,7 @@ def fill_structure(mode, pdb_id, output_pdb, max_retries=5, rate_limit=5):
     corrected_residue_map = {}
     offset = 0
     for idx, residue in enumerate(sorted_residues):
-        chain_id, res_seq, res_name, i_code = residue
+        chain_id_atom, res_seq, res_name, i_code = residue
         expected_idx = idx + 1  # 1-indexed
         if expected_idx in seq_pos:
             expected_res_seq, expected_i_code = seq_pos[expected_idx]
