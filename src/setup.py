@@ -1,7 +1,6 @@
 import os
 from setuptools import setup, find_packages
 
-# Read the long description from the README file if it exists.
 long_description = ""
 readme_path = os.path.join(os.path.dirname(__file__), "README.md")
 if os.path.exists(readme_path):
@@ -17,9 +16,9 @@ setup(
     ),
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Your Name",  # Replace with your name
-    author_email="your.email@example.com",  # Replace with your email
-    url="https://github.com/yourusername/pdbdr",  # Optional: Update URL if available
+    author="Guy W. Dayhoff II",
+    author_email="gdayhoff@rx.umaryland.edu",
+    url="https://github.com/wayyne/pdb_doctor",
     packages=find_packages(),
     install_requires=[
         "numpy",
