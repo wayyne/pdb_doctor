@@ -12,7 +12,7 @@ NR > 1 {
   outpdb  = substr($1, 1, 5) "triaged.pdb"  # e.g., "6o83_triaged.pdb"
 
   # build the command; quote vars to be safe
-  printf "pdbdr-transplant\" \"%s\" %s \"%s\" --chain %s\n",
+  printf "pdbdr-transplant \"%s\" %s \"%s\" --chain %s\n",
          partial, pdbid, outpdb, chain
 }
 ' incomplete.tsv | bash && \
