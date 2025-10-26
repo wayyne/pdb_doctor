@@ -7,7 +7,7 @@ It automates the **extraction**, **folding**, **transplantation**, and **restora
 
 - **PDBFixer** for atom reconstruction  
 - **SCWRL4** for side-chain refinement  
-- **ESM3** for sequence-based folding and structure completion.
+- **ESM3** for sequence-based folding and structure completion. (ESM Forge token required: place in pdb_doctor/env/forge_token.txt)
 
 This tool is particularly useful for:
 - Extracting accurate amino acid sequences from incomplete PDB files.  
