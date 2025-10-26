@@ -57,11 +57,9 @@ cd pdb_doctor
 
 ### 2. Choose an Installation Route
 
-PDB Doctor can be installed in **two different ways** depending on how you want to manage your environment.
+PDB Doctor can be set up in **two main ways**, depending on how you want to use it:
 
 #### **Option A: Recommended — Dedicated venv Environment**
-
-This will create an isolated environment with all dependencies, including torch, PDBFixer, and ESM.
 
 ```
 cd env
@@ -69,12 +67,13 @@ bash setup_env.sh venv
 ```
 
 ✅ Recommended because:
-- Clean and isolated
-- No interference from other Python installations
-- Easier to keep reproducible
+- Creates a clean, isolated environment
+- Avoids Conda/Torch conflicts
+- All \`pdbdr-*\` command-line tools are automatically added to your PATH
+- You can run tools directly as binaries (e.g. \`pdbdr-triage\`)
 
 ⚠️ **Important:**  
-If you use Conda for other work, make sure **Conda is fully deactivated** before creating or activating a Python venv:
+If you use Conda for other work, make sure it’s fully deactivated before creating or activating a Python venv:
 ```
 conda deactivate
 ```
@@ -83,32 +82,34 @@ conda deactivate
 
 #### **Option B: Conda Environment (Not Recommended)**
 
-Conda can be used but can occasionally conflict with ESM3 and torch builds:
 ```
 cd env
 bash setup_env.sh conda
 ```
 
-⚠️ Known Issues:
-- Some systems have torch / ESM dependency conflicts with Conda.
-- You may need to manually resolve dependencies.
+⚠️ Known issues:  
+- Conda can sometimes conflict with ESM3 or Torch builds.  
+- You may need to resolve dependencies manually.
 
 ---
 
 #### **Option C: Install into an Existing Environment or System-Wide**
 
-If you already have a Python environment configured (e.g., lab-wide Conda, cluster environment, system Python):
-
 ```
 bash src/install_pdbdr.sh
 ```
 
-The installer will:
-- Prompt for confirmation
-- Use pip in the **active environment**
-- Or install system-wide if no virtual environment is active
+This:
+- Installs PDB Doctor as a **Python package** in the currently active environment  
+- Or system-wide if no virtual environment is active  
+- **Does not** create a new environment
 
-This allows advanced users to integrate PDB Doctor into shared or custom environments without creating a new one.
+✅ This allows you to:
+- \`import pdbdr\` from within your own Python projects or notebooks  
+- Use \`pdbdr\` functions programmatically as a library  
+- Integrate the tools into shared lab or cluster environments
+
+📝 If you want the **CLI binaries** (e.g., \`pdbdr-transplant\`, \`pdbdr-triage\`) to work from anywhere, make sure the Python environment’s \`bin\` directory is on your \`PATH\`.
 
 ---
 
