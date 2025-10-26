@@ -1,156 +1,216 @@
-# PDB Doctor
+# 🩺 PDB Doctor
 
 ## Overview
 
-**PDB Doctor** is a powerful, **Unix-driven** pipeline designed for **protein structure refinement** and **completion**. It automates the extraction, folding, and restoration of protein structures from **metadata-scrubbed PDB files**, utilizing **PDBFixer, SCWRL4, and ESM3** for **atom reconstruction, backbone restoration, and sequence-based folding**.
+**PDB Doctor** is a powerful, **Unix-driven** pipeline designed for **protein structure refinement** and **completion**.  
+It automates the **extraction**, **folding**, **transplantation**, and **restoration** of protein structures from **metadata-scrubbed PDB files**, utilizing:
+
+- **PDBFixer** for atom reconstruction  
+- **SCWRL4** for side-chain refinement  
+- **ESM3** for sequence-based folding and structure completion.
 
 This tool is particularly useful for:
-- **Extracting accurate amino acid sequences** from incomplete PDB files.
-- **Folding sequences using ESM3** and aligning them to experimental data.
-- **Restoring missing residues** while ensuring atomic correctness.
-- **Completing PDB structures** with side-chain optimization via SCWRL4.
-- **Sanity-checking amide bonds** and atom consistency.
-
-## Features
-- **Automated Extraction:** Retrieves protein sequences from metadata-scrubbed PDBs.
-- **Folding & Alignment:** Uses **ESM3** to predict missing regions and align them globally.
-- **Local Stitching:** Inserts missing residues with **backbone preservation**.
-- **Heavy Atom Completion:** Fixes missing **heavy atoms** using **PDBFixer**.
-- **Side-Chain Optimization:** Restores **side-chain conformations** using **SCWRL4**.
-- **Fully Scripted Workflow:** A single **Bash script (`triage.sh`)** automates the pipeline.
+- Extracting accurate amino acid sequences from incomplete PDB files.  
+- Folding sequences using ESM3 and aligning them to experimental data.  
+- Restoring missing residues while ensuring atomic correctness.  
+- Completing PDB structures with side-chain optimization via SCWRL4.  
+- Sanity-checking amide bonds and atom consistency.
 
 ---
 
-## Installation
+## 🧰 Core Tools
 
-PDB Doctor requires a **Python 3.10+ environment**. You can set up dependencies using **either Conda or Python venv** via the provided script.
+| Command | Role | Description | When to use |
+|---------|------|-------------|-------------|
+| \`pdbdr-triage\` | **Triage Nurse** | Batch intake of PDBs. Classifies complete vs incomplete, routes incomplete through folding or transplant, runs completion, and contact labeling. | Full directory processing |
+| \`pdbdr-transplant\` | **Transplant Surgeon** | Fills missing residues using a donor PDB (via PDB ID) and grafts into the partial structure. | If a suitable donor exists |
+| \`pdbdr-bioprint\` | **Biofabrication** | Folds a structure de novo from a sequence and grafts missing regions into the partial structure. | When no donor PDB exists |
+| \`pdbdr-complete-pdb\` | **Finishing Step** | Restores missing heavy atoms and refines side chains using PDBFixer and SCWRL4. | Always after grafting |
+| \`pdbdr-contact-trace\` | **Contact Tracer** | Reattaches ligands (HETATMs) and labels contacting residues. | Post-completion |
+| \`pdbdr-extract-seq\` | **Sequence Extraction** | Extracts sequences from metadata-scrubbed PDB files. | Pre-triage or standalone |
+
+---
+
+## ✨ Key Features
+
+- Automated sequence extraction  
+- De novo or donor-based structure completion  
+- Global alignment (Kabsch) and local stitching  
+- Heavy atom reconstruction via PDBFixer  
+- **SCWRL4-based side-chain refinement (required)**  
+- Ligand contact labeling and annotation  
+- Fully scripted, cluster-friendly workflow
+
+---
+
+## 📦 Installation
+
+PDB Doctor requires **Python 3.10+**.
 
 ### 1. Clone the Repository
-
-```bash
+```
 git clone https://github.com/wayyne/pdb_doctor.git
 cd pdb_doctor
 ```
 
-### 2. Install Dependencies
+---
 
-Use the **setup script** to configure either **Conda** or **venv**:
+### 2. Choose an Installation Route
 
-#### **Option A: Conda Setup**
-```bash
-cd env
-bash setup_env.sh conda
+PDB Doctor can be installed in **two different ways** depending on how you want to manage your environment.
+
+#### **Option A: Recommended — Dedicated venv Environment**
+
+This will create an isolated environment with all dependencies, including torch, PDBFixer, and ESM.
+
 ```
-
-#### **Option B: Python venv Setup**
-```bash
 cd env
 bash setup_env.sh venv
 ```
 
-This will:
-- Create a Python environment (`pdb_doctor`).
-- Install dependencies from `pdb_doctor_env.txt`.
-- Set up **PDBFixer** (from OpenMM) and **SCWRL4** (if available).
+✅ Recommended because:
+- Clean and isolated
+- No interference from other Python installations
+- Easier to keep reproducible
 
-### 3. Ensure SCWRL4 is Installed
-SCWRL4 is required for **side-chain optimization**. Make sure it is in your `PATH`:
-```bash
+⚠️ **Important:**  
+If you use Conda for other work, make sure **Conda is fully deactivated** before creating or activating a Python venv:
+```
+conda deactivate
+```
+
+---
+
+#### **Option B: Conda Environment (Not Recommended)**
+
+Conda can be used but can occasionally conflict with ESM3 and torch builds:
+```
+cd env
+bash setup_env.sh conda
+```
+
+⚠️ Known Issues:
+- Some systems have torch / ESM dependency conflicts with Conda.
+- You may need to manually resolve dependencies.
+
+---
+
+#### **Option C: Install into an Existing Environment or System-Wide**
+
+If you already have a Python environment configured (e.g., lab-wide Conda, cluster environment, system Python):
+
+```
+bash src/install_pdbdr.sh
+```
+
+The installer will:
+- Prompt for confirmation
+- Use pip in the **active environment**
+- Or install system-wide if no virtual environment is active
+
+This allows advanced users to integrate PDB Doctor into shared or custom environments without creating a new one.
+
+---
+
+### 3. **Install SCWRL4 (Required)**
+
+SCWRL4 is required for side-chain optimization and must be available in your PATH:
+```
 which Scwrl4
 ```
+
 If not installed, download it from:
 [http://dunbrack.fccc.edu/scwrl4/](http://dunbrack.fccc.edu/lab/scwrl/)
 
+Place the binary somewhere in your PATH (e.g., \`~/bin\` or \`/usr/local/bin\`).
+
 ---
 
-## Usage
+## 🧪 Usage
 
-### **1. Run the Full Workflow (assuming python venv)**
-The **`triage.sh`** script automates the complete process:
-
-```bash
-source <pdb_doctor_root>/env/pdb_doctor/bin/activate
-bash triage.sh
+### 1. Run the Full Workflow
+```
+source env/pdb_doctor/bin/activate
+pdbdr-triage
 ```
 
-### **2. Workflow Breakdown**
-Below is a breakdown of how the pipeline functions.
-
-#### **Step 1: Extract Sequences**
-Extracts **full-length amino acid sequences** from metadata-scrubbed PDBs.
-```bash
-python extract_sequence.py <input_directory>
-```
-**Outputs:**
-- `complete.tsv` – Fully resolved sequences.
-- `incomplete.tsv` – Sequences with **missing residues**.
+This command:
+- Extracts sequences
+- Detects incomplete structures
+- Runs transplant or bioprint
+- Completes missing atoms
+- Labels ligand contacts
+- Organizes triaged outputs
 
 ---
 
-#### **Step 2: Fold and Align Structures**
-Folds missing segments using **ESM3**, aligns the predicted structure, and **stitches missing regions** into the experimental model.
-```bash
-python fold_and_transfer.py <partial_pdb> "<sequence>" <output_pdb>
+### 2. Individual Steps
+
+#### Extract Sequences
 ```
-**Outputs:**
-- `fitted_folded.pdb` – Folded model, globally aligned.
-- `output_pdb` – Merged **chimeric structure** with restored residues.
-
----
-
-#### **Step 3: Complete Missing Heavy Atoms**
-Uses **PDBFixer** to **restore heavy atoms** and **SCWRL4** to refine side-chain placements.
-```bash
-python complete_pdb.py --mode partial --input input --output output
-```
-**Modes:**
-- `--mode partial` → Restores missing **heavy atoms**.
-
----
-
-## Example Workflow
-
-Given a directory containing **scrubbed PDB files**, PDB Doctor can:
-1. Extract sequences.
-2. Fold missing regions using **ESM3**.
-3. Align folded models with **Kabsch-based superposition**.
-4. Locally **stitch missing segments**.
-5. Restore **side-chains** using **SCWRL4**.
-
-Example Run:
-```bash
-bash triage.sh
+pdbdr-extract-seq .
 ```
 
-After execution:
-- `output/` will contain **corrected PDB structures**.
-- `extraction.log` will provide **sequence recovery details**.
+#### Transplant Missing Segments
+```
+pdbdr-transplant partial.pdb 1ABC output.pdb --chain A
+```
+
+#### Bioprint from Sequence
+```
+pdbdr-bioprint partial.pdb "MSTK..." output.pdb
+```
+
+#### Complete Missing Heavy Atoms and Side Chains
+```
+pdbdr-complete-pdb --mode partial --input input_dir --output output_dir
+```
+
+#### Label Ligand Contacts
+```
+pdbdr-contact-trace input_dir output_dir
+```
 
 ---
 
-## Dependencies
-- **Python 3.10+**
-- **NumPy**
-- **Torch** (for ESM3 folding)
-- **pdbfixer** (for atom reconstruction)
-- **SCWRL4** (for side-chain refinement)
-- **Requests** (for fetching PDBs)
+## 🧭 Typical Workflow
+
+1. **Triage** — classify PDBs as complete or incomplete  
+2. **Transplant / Bioprint** — restore missing residues  
+3. **Complete** — rebuild heavy atoms and refine side chains (**requires SCWRL4**)  
+4. **Contact Trace** — label ligand contacts  
+5. **Export** — output fully completed chimeric structures
 
 ---
 
-## Citation
-If you use PDB Doctor in your research, please cite:
-- **SCWRL4:** Krivov et al., *Proteins: Structure, Function, and Bioinformatics (2009).*
-- **PDBFixer:** OpenMM PDBFixer repository.
+## 🧬 Dependencies
+
+- Python 3.10+  
+- NumPy  
+- Torch (for ESM3 folding)  
+- PDBFixer (atom reconstruction)  
+- **SCWRL4 (required)** — for side-chain refinement  
+- Requests (fetching PDBs)
 
 ---
 
-## Author
+## 📜 Citation
+
+If you use **PDB Doctor** in your research, please cite:
+
+- Krivov et al., *Proteins: Structure, Function, and Bioinformatics (2009)* — SCWRL4  
+- OpenMM PDBFixer repository  
+- ESM3 model (Meta AI)
+
+---
+
+## 👨‍⚕️ Author
+
 Guy **Wayyne** Dayhoff II
 
 ---
 
-## License
-MIT License.  
-Feel free to contribute or report issues!
+## 🪪 License
+
+MIT License — Contributions welcome!
 
