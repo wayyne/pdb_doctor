@@ -230,13 +230,15 @@ def fill_struct(model, data_in, chain_id=None, max_retries=5, rate_limit=5):
         sequence=full_seq, coordinates=x,
         potential_sequence_of_concern=True
     )
+
     template_toks = model.encode(template_prot)
-    prompt = model.encode(ESMProtein(sequence=full_seq))
+    prompt = model.encode(ESMProtein(sequence=full_seq, potential_sequence_of_concern=True))
 
     # Set default structure tokens.
     prompt.structure = torch.full_like(prompt.sequence, 4096)
     prompt.structure[0] = 4098
     prompt.structure[-1] = 4097
+    prompt.potential_sequence_of_concern = True
 
     # Overwrite positions where structure is available.
     for i in range(len(full_seq)):
@@ -350,7 +352,7 @@ def fill_structure(mode, pdb_id, output_pdb, chain_id=None, max_retries=5, rate_
     elif mode.lower() == "forge":
         from esm.sdk.forge import ESM3ForgeInferenceClient
         # Read Forge token from file.
-        with open("forge_token.txt", "r") as file:
+        with open("/home/wayyne/lab/plmpg/env/forge_token.txt", "r") as file:
             forge_tok = file.read().strip()
         if not forge_tok:
             print("Failed to read forge_token. Ensure forge_token.txt exists.")
