@@ -1,12 +1,10 @@
 #!/bin/bash
 
-basecamp=/home/wayyne/lab/pdbdr/scripts
-
 #get list of complete and incomplete pdbs
-python ${basecamp}/extract_sequence.py . _pp.pdb && \
+pdbdr-extract-seq . _pp.pdb && \
 
 # run the incomplete pdbs through fill and transfer
-awk -v basecamp="${basecamp}" '
+awk '
 NR > 1 {
   partial = $1
   chain   = $2
@@ -14,13 +12,13 @@ NR > 1 {
   outpdb  = substr($1, 1, 5) "triaged.pdb"  # e.g., "6o83_triaged.pdb"
 
   # build the command; quote vars to be safe
-  printf "python \"%s/fill_and_transfer.py\" \"%s\" %s \"%s\" --chain %s\n",
-         basecamp, partial, pdbid, outpdb, chain
+  printf "pdbdr-transplant\" \"%s\" %s \"%s\" --chain %s\n",
+         partial, pdbid, outpdb, chain
 }
 ' incomplete.tsv | bash && \
 
 #copy the complete pdbs w/o HETATMs (do not need to fold or transfer)
-awk -v basecamp=${basecamp} ' 
+awk '
 NR > 1 {
   print "grep -v 'HETATM'",$1,">",substr($1,1,5)"triaged.pdb"
 }
@@ -30,10 +28,10 @@ NR > 1 {
 mkdir -p incomplete_triaged_pdbs && mv *_triaged.pdb incomplete_triaged_pdbs/. && \
 
 #run the 'triaged' pdbs through complete PDB to add missing atoms and optimize newly added side-chains
-time python ${basecamp}/complete_pdb.py --mode partial --input incomplete_triaged_pdbs --output _triaged_pdbs && \
+time pdbdr-complete-pdb --mode partial --input incomplete_triaged_pdbs --output _triaged_pdbs && \
 
 #confirm/refine contact labels with sticky fingers
-time python ${basecamp}/sticky_fingers.py . _triaged_pdbs && \
+time pdbdr-contact-tracer . _triaged_pdbs && \
 
 #oraganize the complete triaged (aka chimeric) PDBs
 cd _triaged_pdbs
