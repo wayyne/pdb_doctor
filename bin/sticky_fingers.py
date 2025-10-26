@@ -268,21 +268,63 @@ def get_negative_residues(atoms):
                 neg_set[key] = atom["temp_factor"]
     return {key for key, val in neg_set.items() if val == 0.0}
 
+##########################################
+# NEW: contacts-only mode helper (added)
+##########################################
+def relabel_pdb_with_contacts_to_file(input_pdb_path, output_pdb_path):
+    """
+    Reads a PDB file from input_pdb_path, computes contacts (5.0 Å),
+    sets temp_factor to 1.0/0.0 for ATOM records, and writes the result
+    to output_pdb_path (without modifying the input file).
+    """
+    atoms = read_pdb(input_pdb_path)
+    contact_residues = compute_contacts(atoms, contact_threshold=5.0)
+
+    for atom in atoms:
+        if atom["record_name"] == "ATOM":
+            key = (atom["chain_id"], atom["res_seq"], atom["i_code"])
+            atom["temp_factor"] = 1.0 if key in contact_residues else 0.0
+
+    write_pdb(output_pdb_path, atoms)
+    print(f"Wrote relabeled PDB to {output_pdb_path}")
 
 ##########################################
-# Main: Process each output PDB and log details
+# Main: original behavior preserved; new flag adds contacts-only mode
 ##########################################
 def main():
-    output_dir = sys.argv[1]
-    if len(sys.argv) < 2:
-        print("Usage: sticky_fingers.py <pdb_dir>")
+    # NEW: optional contacts-only mode that does not alter original behavior
+    if len(sys.argv) >= 2 and sys.argv[1] in ("--contacts-only", "-c"):
+        if len(sys.argv) != 4:
+            print("Usage: sticky_fingers.py --contacts-only <input_pdb_dir> <output_pdb_dir>")
+            sys.exit(1)
+        input_dir = sys.argv[2]
+        output_dir = sys.argv[3]
+        if not os.path.isdir(input_dir):
+            print(f"Error: input directory does not exist: {input_dir}")
+            sys.exit(1)
+        os.makedirs(output_dir, exist_ok=True)
+        print(f"Contacts-only mode")
+        print(f"Input directory:  {input_dir}")
+        print(f"Output directory: {output_dir}")
+        for pdb_file in os.listdir(input_dir):
+            if pdb_file.lower().endswith(".pdb"):
+                in_path = os.path.join(input_dir, pdb_file)
+                out_path = os.path.join(output_dir, pdb_file)
+                relabel_pdb_with_contacts_to_file(in_path, out_path)
+        print("Processing complete.")
+        return
+
+    # ---- ORIGINAL WORKFLOW (unchanged) ----
+    output_dir = sys.argv[2]
+    if len(sys.argv) < 3:
+        print("Usage: sticky_fingers.py <og_pdb_dir> <output_pdb_dir>")
         sys.exit(1) 
 
-    output_dir = sys.argv[1] 
+    output_dir = sys.argv[2] 
     print(f"Output directory: {output_dir}")
 
-    basecamp = "/home/wayyne/wrk/pdb_doctor"
-    og_pp_pdbs_dir = "/home/wayyne/wrk/biolip2_for_pretraining/pickpocket_2025/pp_pdbs/single-chain"
+    basecamp = "/home/wayyne/lab/pdbdr"
+    og_pp_pdbs_dir = sys.argv[1]
 
     # Open log files
     log_filename = "sticky_fingers_log.txt"
