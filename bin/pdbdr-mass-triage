@@ -31,7 +31,7 @@ mkdir -p incomplete_triaged_pdbs && mv *_triaged.pdb incomplete_triaged_pdbs/. &
 time pdbdr-complete-pdb --mode partial --input incomplete_triaged_pdbs --output _triaged_pdbs && \
 
 #confirm/refine contact labels with sticky fingers
-time pdbdr-contact-tracer . _triaged_pdbs && \
+time pdbdr-contact-trace . _triaged_pdbs && \
 
 #oraganize the complete triaged (aka chimeric) PDBs
 cd _triaged_pdbs
